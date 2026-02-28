@@ -15,7 +15,7 @@ This is a mobile application developed for the **UECS3253 Wireless Application D
 
 ---
 
-## 🚀 Project Overview
+## Project Overview
 
 The **Personal Finance Tracker** aims to help users manage their personal finances through local data persistence and cloud synchronization. This project fulfills the requirements for CO2, CO3, and CO4 of the course.
 
@@ -27,7 +27,7 @@ The **Personal Finance Tracker** aims to help users manage their personal financ
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 * **Framework:** React Native
 * **Navigation:** React Navigation (Stack, Drawer, Tab)
 * **Database:** SQLite / AsyncStorage
@@ -36,19 +36,19 @@ The **Personal Finance Tracker** aims to help users manage their personal financ
 
 ---
 
-## 📂 Project Structure (Deliverables)
+## Project Structure (Deliverables)
 In accordance with the assignment specifications, the final submission will include:
 1.  **Technical Report:** Detailed documentation of features, navigation, and CRUD operations.
 2.  **Source Code:** The complete React Native project folder (excluding `node_modules`).
 
 ---
 
-## 📅 Important Dates
+## Important Dates
 * **Deadline:** 3rd May 2026, 11:59 P.M. (Week 13 Sunday)
 
 ---
 
-## 📝 Setup Instructions
+## Setup Instructions
 1. Clone the repository:
    ```bash
    git clone [https://github.com/iamLebin1/Personal-Finance-Tracker.git](https://github.com/iamLebin1/Personal-Finance-Tracker.git)
