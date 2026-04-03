@@ -34,6 +34,11 @@ The **Personal Finance Tracker** aims to help users manage their personal financ
 * [cite_start]**API Connectivity:** Fetch API / Axios [cite: 41]
 * **Version Control:** Git & GitHub
 
+## Cloud Setup
+* The app now uses **Firebase Auth** for email/password login and **Firestore** for user-scoped transaction storage.
+* Replace the placeholder values in [src/config/firebase.ts](src/config/firebase.ts) with your Firebase project credentials.
+* Apply the Firestore security rules in [firestore.rules](firestore.rules) so each user can only read and write their own transactions.
+
 ---
 
 ## Project Structure (Deliverables)
