@@ -18,8 +18,12 @@ const mapApiTransaction = (row: any): TransactionRecord => {
   };
 };
 
-const fetchTransactions = () => {
-  return fetch(config.settings.serverPath + '/api/transactions')
+const fetchTransactions = (userId?: string) => {
+  const requestUrl = userId
+    ? config.settings.serverPath + '/api/transactions?userId=' + encodeURIComponent(userId)
+    : config.settings.serverPath + '/api/transactions';
+
+  return fetch(requestUrl)
     .then(response => response.json())
     .then(data => {
       if (!Array.isArray(data)) {
@@ -31,15 +35,15 @@ const fetchTransactions = () => {
 };
 
 export const subscribeToTransactions = (
-  _userId: string,
+  userId: string,
   onChange: (records: TransactionRecord[]) => void,
 ) => {
-  fetchTransactions()
+  fetchTransactions(userId)
     .then(onChange)
     .catch(() => onChange([]));
 
   const timer = setInterval(() => {
-    fetchTransactions()
+    fetchTransactions(userId)
       .then(onChange)
       .catch(() => onChange([]));
   }, 1500);

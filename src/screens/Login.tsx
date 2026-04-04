@@ -15,6 +15,7 @@ import Svg, { Path } from 'react-native-svg';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
+import { saveSession } from '../utils/session';
 
 var config = require('../config/Config');
 
@@ -103,25 +104,34 @@ const LoginScreen = ({ navigation, route }: Props) => {
     })
       .then(respond => respond.json())
       .then(respondJson => {
-        setSubmitting(false);
-
-        if (respondJson.affected > 0) {
-          if (rememberMe) {
-            AsyncStorage.setItem(REMEMBER_EMAIL_KEY, email.trim());
-          } else {
-            AsyncStorage.removeItem(REMEMBER_EMAIL_KEY);
-          }
-
-          Alert.alert('Success', 'Login successful.');
-          if (!rememberMe) {
-            setEmail('');
-          }
-          setPassword('');
-          login(
+        if (respondJson?.affected > 0) {
+          const currentUserId = String(respondJson?.user?.id ?? '');
+          const currentUserName =
             respondJson?.user?.fullName ||
-              (respondJson?.user?.email ? String(respondJson.user.email).split('@')[0] : 'User'),
-          );
+            (respondJson?.user?.email ? String(respondJson.user.email).split('@')[0] : 'User');
+
+          saveSession(currentUserId, currentUserName)
+            .then(() => {
+              return rememberMe
+                ? AsyncStorage.setItem(REMEMBER_EMAIL_KEY, email.trim())
+                : AsyncStorage.removeItem(REMEMBER_EMAIL_KEY);
+            })
+            .then(() => {
+              Alert.alert('Success', 'Login successful.');
+              if (!rememberMe) {
+                setEmail('');
+              }
+              setPassword('');
+              login(currentUserId, currentUserName);
+            })
+            .catch(() => {
+              Alert.alert('Error', 'Unable to save your session.');
+            })
+            .finally(() => {
+              setSubmitting(false);
+            });
         } else {
+          setSubmitting(false);
           Alert.alert('Login failed', 'Invalid email or password.');
         }
       })

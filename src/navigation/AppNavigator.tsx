@@ -1,9 +1,6 @@
-import React from 'react';
-import { Pressable, Text } from 'react-native';
-import { NavigationContainer, getFocusedRouteNameFromRoute } from '@react-navigation/native';
+import React, { useEffect, useState } from 'react';
+import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useAuth } from '../context/AuthContext';
 import type {
   AuthStackParamList,
@@ -14,16 +11,13 @@ import LoginScreen from '../screens/Login';
 import RegisterScreen from '../screens/Register';
 import TransactionsScreen from '../screens/Transactions.tsx';
 import TransactionFormScreen from '../screens/TransactionForm';
+import AccountsScreen from '../screens/Accounts';
 import AnalyticsScreen from '../screens/Analytics.tsx';
+import { loadSession } from '../utils/session';
+
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const TransactionsStack = createNativeStackNavigator<TransactionsStackParamList>();
-const Tabs = createBottomTabNavigator<MainTabParamList>();
-
-const signOutButton = (onPress: () => void) => (
-  <Pressable onPress={onPress} style={{ marginRight: 14 }}>
-    <Text style={{ color: '#38BDF8', fontWeight: '700' }}>Sign Out</Text>
-  </Pressable>
-);
+const MainStack = createNativeStackNavigator<MainTabParamList>();
 
 const AuthFlow = () => (
   <AuthStack.Navigator screenOptions={{ headerShown: false }}>
@@ -32,127 +26,54 @@ const AuthFlow = () => (
   </AuthStack.Navigator>
 );
 
-const TransactionsStackNavigator = () => {
-  const { signOut } = useAuth();
+const TransactionsStackNavigator = () => (
+  <TransactionsStack.Navigator screenOptions={{ headerShown: false }}>
+    <TransactionsStack.Screen name="Transactions" component={TransactionsScreen} />
+    <TransactionsStack.Screen name="TransactionForm" component={TransactionFormScreen} />
+  </TransactionsStack.Navigator>
+);
 
-  return (
-    <TransactionsStack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: '#0F172A' },
-        headerTintColor: '#F8FAFC',
-        contentStyle: { backgroundColor: '#F4F7FB' },
-      }}>
-      <TransactionsStack.Screen
-        name="Transactions"
-        component={TransactionsScreen}
-        options={{
-          title: 'Transactions',
-          headerRight: () => signOutButton(() => signOut()),
-        }}
-      />
-      <TransactionsStack.Screen
-        name="TransactionForm"
-        component={TransactionFormScreen}
-        options={({ route }) => ({
-          title: route.params?.transactionId ? 'Edit Transaction' : 'New Transaction',
-        })}
-      />
-    </TransactionsStack.Navigator>
-  );
-};
-
-const MainTabs = () => {
-  const { signOut } = useAuth();
-
-  const baseTabBarStyle = {
-    backgroundColor: 'rgba(22,21,31,0.95)',
-    borderTopColor: 'rgba(255,255,255,0.07)',
-    height: 74,
-    paddingTop: 6,
-    paddingBottom: 8,
-  };
-
-  return (
-    <Tabs.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: '#111827' },
-        headerTintColor: '#F8FAFC',
-        tabBarActiveTintColor: '#A78BFA',
-        tabBarInactiveTintColor: '#64748B',
-        tabBarStyle: baseTabBarStyle,
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '700',
-        },
-      }}>
-      <Tabs.Screen
-        name="TransactionsStack"
-        component={TransactionsStackNavigator}
-        options={({ route }) => {
-          const routeName = getFocusedRouteNameFromRoute(route) ?? 'Transactions';
-          const isFormRoute = routeName === 'TransactionForm';
-
-          return {
-          title: 'Home',
-          headerShown: false,
-          headerRight: () => signOutButton(() => signOut()),
-          tabBarStyle: isFormRoute ? { display: 'none' } : baseTabBarStyle,
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} color={color} size={size + 2} />
-          ),
-        }}}
-      />
-      <Tabs.Screen
-        name="AddTransaction"
-        component={TransactionsStackNavigator}
-        listeners={({ navigation }) => ({
-          tabPress: e => {
-            e.preventDefault();
-            navigation.navigate('TransactionsStack', {
-              screen: 'TransactionForm',
-            } as never);
-          },
-        })}
-        options={{
-          title: 'Add',
-          headerShown: false,
-          tabBarIcon: ({ focused, size }) => (
-            <Ionicons
-              name={focused ? 'add-circle' : 'add-circle-outline'}
-              color={focused ? '#A78BFA' : '#64748B'}
-              size={size + 8}
-            />
-          ),
-          tabBarLabelStyle: {
-            marginTop: -2,
-          },
-        }}
-      />
-      <Tabs.Screen
-        name="Analytics"
-        component={AnalyticsScreen}
-        options={{
-          title: 'Analytics',
-          headerRight: () => signOutButton(() => signOut()),
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? 'stats-chart' : 'stats-chart-outline'}
-              color={color}
-              size={size + 2}
-            />
-          ),
-        }}
-      />
-    </Tabs.Navigator>
-  );
-};
+const MainStackNavigator = () => (
+  <MainStack.Navigator
+    screenOptions={{
+      headerShown: false,
+      animationEnabled: false,
+    }}>
+    <MainStack.Screen
+      name="TransactionsStack"
+      component={TransactionsStackNavigator}
+    />
+    <MainStack.Screen name="Accounts" component={AccountsScreen} />
+    <MainStack.Screen name="Analytics" component={AnalyticsScreen} />
+    <MainStack.Screen name="AddTransaction" component={TransactionsStackNavigator} />
+  </MainStack.Navigator>
+);
 
 export const AppNavigator = () => {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, login } = useAuth();
+  const [bootstrapped, setBootstrapped] = useState(false);
+
+  useEffect(() => {
+    loadSession()
+      .then(session => {
+        if (session.isLoggedIn) {
+          login(session.currentUserId, session.currentUserName);
+        }
+
+        setBootstrapped(true);
+      })
+      .catch(() => {
+        setBootstrapped(true);
+      });
+  }, [login]);
+
+  if (!bootstrapped) {
+    return null;
+  }
 
   return (
     <NavigationContainer key={isLoggedIn ? 'main' : 'auth'}>
-      {isLoggedIn ? <MainTabs /> : <AuthFlow />}
+      {isLoggedIn ? <MainStackNavigator /> : <AuthFlow />}
     </NavigationContainer>
   );
 };

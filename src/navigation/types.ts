@@ -17,6 +17,7 @@ export type TransactionsStackParamList = {
 
 export type MainTabParamList = {
   TransactionsStack: undefined;
+  Accounts: undefined;
   AddTransaction: undefined;
   Analytics: undefined;
 };

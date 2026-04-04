@@ -1,9 +1,11 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { clearSession } from '../utils/session';
 
 type AuthContextValue = {
   isLoggedIn: boolean;
+  currentUserId: string;
   userName: string;
-  login: (nextUserName?: string) => void;
+  login: (nextUserId?: string, nextUserName?: string) => void;
   signOut: () => void;
 };
 
@@ -11,20 +13,31 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState('');
   const [userName, setUserName] = useState('');
 
-  const value: AuthContextValue = {
-    isLoggedIn,
-    userName,
-    login: (nextUserName?: string) => {
+  const login = useCallback((nextUserId?: string, nextUserName?: string) => {
       setIsLoggedIn(true);
+      setCurrentUserId(nextUserId || '');
       setUserName(nextUserName || 'User');
-    },
-    signOut: () => {
+    }, []);
+
+  const signOut = useCallback(() => {
       setIsLoggedIn(false);
+      setCurrentUserId('');
       setUserName('');
-    },
-  };
+      clearSession();
+    }, []);
+
+  const value: AuthContextValue = useMemo(() => {
+    return {
+      isLoggedIn,
+      currentUserId,
+      userName,
+      login,
+      signOut,
+    };
+  }, [currentUserId, isLoggedIn, login, signOut, userName]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

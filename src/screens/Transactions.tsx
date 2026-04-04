@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import type { TransactionsStackParamList } from '../navigation/types';
@@ -18,7 +19,7 @@ import type { TransactionRecord } from '../types/transactions';
 type Props = NativeStackScreenProps<TransactionsStackParamList, 'Transactions'>;
 
 const TransactionsScreen = ({ navigation }: Props) => {
-  const { isLoggedIn, signOut, userName } = useAuth();
+  const { currentUserId, isLoggedIn, signOut, userName } = useAuth();
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -30,13 +31,13 @@ const TransactionsScreen = ({ navigation }: Props) => {
     }
 
     setLoading(true);
-    const unsubscribe = subscribeToTransactions('1', (nextTransactions: TransactionRecord[]) => {
+    const unsubscribe = subscribeToTransactions(currentUserId, (nextTransactions: TransactionRecord[]) => {
       setTransactions(nextTransactions);
       setLoading(false);
     });
 
     return unsubscribe;
-  }, [isLoggedIn]);
+  }, [currentUserId, isLoggedIn]);
 
   const incomeTotal = useMemo(
     () => transactions.filter(tx => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0),
@@ -68,8 +69,10 @@ const TransactionsScreen = ({ navigation }: Props) => {
       {
         text: 'Delete',
         style: 'destructive',
-        onPress: async () => {
-          await removeTransaction(transactionId);
+        onPress: () => {
+          removeTransaction(transactionId).catch(() => {
+            Alert.alert('Delete failed', 'Unable to delete the transaction.');
+          });
         },
       },
     ]);
@@ -246,9 +249,70 @@ const TransactionsScreen = ({ navigation }: Props) => {
         }
       />
 
-      <Pressable style={styles.fab} onPress={() => openEditor()}>
-        <MaterialCommunityIcons name="plus-circle" size={62} color="#8B5CF6" />
-      </Pressable>
+      <View
+        style={styles.bottomNavWrap}
+        pointerEvents="box-none">
+        <View style={styles.bottomNav}>
+          {[
+            {
+              label: 'Home',
+              icon: 'home',
+              activeIcon: 'home',
+              action: () => navigation.navigate('TransactionsStack' as never),
+              active: true,
+            },
+            {
+              label: 'History',
+              icon: 'time-outline',
+              activeIcon: 'time',
+              action: () => navigation.navigate('TransactionsStack' as never),
+            },
+            {
+              label: '',
+              icon: 'add',
+              activeIcon: 'add',
+              action: () => openEditor(),
+              fab: true,
+            },
+            {
+              label: 'Analytics',
+              icon: 'analytics-outline',
+              activeIcon: 'analytics',
+              action: () => navigation.navigate('Analytics' as never),
+            },
+            {
+              label: 'Profile',
+              icon: 'person-outline',
+              activeIcon: 'person',
+              action: () => navigation.navigate('Accounts' as never),
+            },
+          ].map(item => {
+            if (item.fab) {
+              return (
+                <View key="fab" style={styles.fabSlot}>
+                  <Pressable style={styles.fabButton} onPress={item.action}>
+                    <Ionicons name="add" size={32} color="#FFFFFF" />
+                  </Pressable>
+                </View>
+              );
+            }
+
+            const active = item.active;
+
+            return (
+              <Pressable key={item.label} style={styles.tabItem} onPress={item.action}>
+                <Ionicons
+                  name={(active ? item.activeIcon : item.icon) as any}
+                  size={24}
+                  color={active ? '#A78BFA' : '#64748B'}
+                />
+                <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{item.label}</Text>
+                {active ? <View style={styles.tabIndicator} /> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
     </SafeAreaView>
   );
 };
@@ -536,20 +600,69 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 20,
   },
-  fab: {
+  bottomNavWrap: {
     position: 'absolute',
-    bottom: 24,
-    alignSelf: 'center',
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingBottom: 16,
+    paddingTop: 8,
+    backgroundColor: 'rgba(19,18,33,0.86)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+  },
+  bottomNav: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    position: 'relative',
+  },
+  tabItem: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#8B5CF6',
-    shadowOpacity: 0.55,
+    gap: 4,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  tabLabel: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  tabLabelActive: {
+    color: '#A78BFA',
+  },
+  tabIndicator: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#A78BFA',
+    marginTop: 2,
+    shadowColor: '#A78BFA',
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+  },
+  fabSlot: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -24,
+  },
+  fabButton: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#251dc9',
+    borderWidth: 4,
+    borderColor: '#131221',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#7c3aed',
+    shadowOpacity: 0.45,
     shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
+    elevation: 6,
   },
 });
 

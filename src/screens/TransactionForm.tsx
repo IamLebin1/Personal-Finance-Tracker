@@ -34,7 +34,7 @@ const categories = [
 const keypad = ['1', '2', '3', 'BACK', '4', '5', '6', '-', '7', '8', '9', '+', '.', '0'];
 
 const TransactionFormScreen = ({ navigation, route }: Props) => {
-  const { isLoggedIn } = useAuth();
+  const { currentUserId, isLoggedIn } = useAuth();
   const transactionId = route.params?.transactionId;
   const [loading, setLoading] = useState(Boolean(transactionId));
   const [amount, setAmount] = useState('84.00');
@@ -51,31 +51,39 @@ const TransactionFormScreen = ({ navigation, route }: Props) => {
 
     let active = true;
 
-    const loadTransaction = async () => {
-      const existing = await getTransactionById(transactionId);
+    getTransactionById(transactionId)
+      .then(existing => {
+        if (!active || !existing) {
+          setLoading(false);
+          return;
+        }
 
-      if (!active || !existing) {
+        setAmount(String(existing.amount));
+        setCategory(existing.category);
+        setNote(existing.note);
+        setType(existing.type);
         setLoading(false);
-        return;
-      }
-
-      setAmount(String(existing.amount));
-      setCategory(existing.category);
-      setNote(existing.note);
-      setType(existing.type);
-      setLoading(false);
-    };
-
-    loadTransaction();
+      })
+      .catch(() => {
+        if (active) {
+          Alert.alert('Load failed', 'Unable to load the selected transaction.');
+          setLoading(false);
+        }
+      });
 
     return () => {
       active = false;
     };
   }, [transactionId]);
 
-  const onSave = async () => {
+  const onSave = () => {
     if (!isLoggedIn) {
       Alert.alert('Not signed in', 'Please log in again.');
+      return;
+    }
+
+    if (!currentUserId) {
+      Alert.alert('Missing session', 'Please log in again to continue.');
       return;
     }
 
@@ -85,28 +93,30 @@ const TransactionFormScreen = ({ navigation, route }: Props) => {
       return;
     }
 
-    try {
-      setSubmitting(true);
-      await saveTransaction(
-        '1',
-        {
-          amount: parsedAmount,
-          category,
-          note,
-          type,
-          occurredOn,
-        },
-        transactionId,
-      );
-      navigation.goBack();
-    } catch (error: any) {
-      Alert.alert('Save failed', error?.message ?? 'Try again.');
-    } finally {
-      setSubmitting(false);
-    }
+    setSubmitting(true);
+    saveTransaction(
+      currentUserId,
+      {
+        amount: parsedAmount,
+        category,
+        note,
+        type,
+        occurredOn,
+      },
+      transactionId,
+    )
+      .then(() => {
+        navigation.goBack();
+      })
+      .catch((error: any) => {
+        Alert.alert('Save failed', error?.message ?? 'Try again.');
+      })
+      .finally(() => {
+        setSubmitting(false);
+      });
   };
 
-  const onDelete = async () => {
+  const onDelete = () => {
     if (!transactionId) {
       return;
     }
@@ -116,9 +126,14 @@ const TransactionFormScreen = ({ navigation, route }: Props) => {
       {
         text: 'Delete',
         style: 'destructive',
-        onPress: async () => {
-          await removeTransaction(transactionId);
-          navigation.goBack();
+        onPress: () => {
+          removeTransaction(transactionId)
+            .then(() => {
+              navigation.goBack();
+            })
+            .catch(() => {
+              Alert.alert('Delete failed', 'Unable to delete the transaction.');
+            });
         },
       },
     ]);
