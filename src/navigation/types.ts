@@ -1,5 +1,10 @@
 export type AuthStackParamList = {
-  Login: undefined;
+  Login:
+    | {
+        prefillEmail?: string;
+        registeredName?: string;
+      }
+    | undefined;
   Register: undefined;
 };
 
@@ -12,5 +17,6 @@ export type TransactionsStackParamList = {
 
 export type MainTabParamList = {
   TransactionsStack: undefined;
+  AddTransaction: undefined;
   Analytics: undefined;
 };

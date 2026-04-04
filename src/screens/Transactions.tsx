@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import type { TransactionsStackParamList } from '../navigation/types';
@@ -16,10 +17,8 @@ import type { TransactionRecord } from '../types/transactions';
 
 type Props = NativeStackScreenProps<TransactionsStackParamList, 'Transactions'>;
 
-const palette = ['#38BDF8', '#22C55E', '#F59E0B', '#A855F7', '#EF4444', '#14B8A6'];
-
 const TransactionsScreen = ({ navigation }: Props) => {
-  const { isLoggedIn, signOut } = useAuth();
+  const { isLoggedIn, signOut, userName } = useAuth();
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -39,17 +38,32 @@ const TransactionsScreen = ({ navigation }: Props) => {
     return unsubscribe;
   }, [isLoggedIn]);
 
-  const totalBalance = transactions.reduce((sum, transaction) => {
-    const signedAmount = transaction.type === 'income' ? transaction.amount : -transaction.amount;
-    return sum + signedAmount;
-  }, 0);
+  const incomeTotal = useMemo(
+    () => transactions.filter(tx => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0),
+    [transactions],
+  );
+
+  const expenseTotal = useMemo(
+    () => transactions.filter(tx => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0),
+    [transactions],
+  );
+
+  const totalBalance = incomeTotal - expenseTotal;
+
+  const performancePct = useMemo(() => {
+    if (expenseTotal <= 0) {
+      return incomeTotal > 0 ? 100 : 0;
+    }
+
+    return ((incomeTotal - expenseTotal) / expenseTotal) * 100;
+  }, [incomeTotal, expenseTotal]);
 
   const openEditor = (transactionId?: string) => {
     navigation.navigate('TransactionForm', { transactionId });
   };
 
   const confirmDelete = (transactionId: string) => {
-    Alert.alert('Delete transaction', 'Remove this transaction from the cloud?', [
+    Alert.alert('Delete transaction', 'Remove this transaction?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -61,90 +75,179 @@ const TransactionsScreen = ({ navigation }: Props) => {
     ]);
   };
 
-  const renderTransaction = ({ item, index }: { item: TransactionRecord; index: number }) => {
+  const dayGreeting = () => {
+    const hour = new Date().getHours();
+
+    if (hour < 12) {
+      return 'Good Morning';
+    }
+
+    if (hour < 18) {
+      return 'Good Afternoon';
+    }
+
+    return 'Good Evening';
+  };
+
+  const transactionIcon = (category: string) => {
+    const c = category.toLowerCase();
+
+    if (c.includes('food') || c.includes('restaurant')) {
+      return 'silverware-fork-knife';
+    }
+
+    if (c.includes('shop')) {
+      return 'shopping-outline';
+    }
+
+    if (c.includes('transport')) {
+      return 'car-outline';
+    }
+
+    if (c.includes('bill')) {
+      return 'file-document-outline';
+    }
+
+    if (c.includes('health')) {
+      return 'heart-pulse';
+    }
+
+    if (c.includes('saving')) {
+      return 'piggy-bank-outline';
+    }
+
+    return 'cash-multiple';
+  };
+
+  const renderTransaction = ({ item }: { item: TransactionRecord }) => {
     const isIncome = item.type === 'income';
-    const amountColor = isIncome ? '#22C55E' : '#F97316';
-    const sign = isIncome ? '+' : '-';
-    const accent = palette[index % palette.length];
 
     return (
       <Pressable
-        style={({ pressed }) => [styles.card, pressed && styles.cardPressed, { borderLeftColor: accent }]}
-        onPress={() => openEditor(item.id)}>
-        <View style={styles.cardTopRow}>
-          <View>
-            <Text style={styles.category}>{item.category}</Text>
-            <Text style={styles.note} numberOfLines={1}>
-              {item.note || 'No description'}
+        onPress={() => openEditor(item.id)}
+        onLongPress={() => confirmDelete(item.id)}
+        style={({ pressed }) => [styles.transactionCard, pressed && styles.transactionCardPressed]}>
+        <View style={styles.transactionLeft}>
+          <View style={styles.transactionIconWrap}>
+            <MaterialCommunityIcons
+              name={transactionIcon(item.category)}
+              size={22}
+              color="#F8FAFC"
+            />
+          </View>
+
+          <View style={styles.transactionTextWrap}>
+            <Text style={styles.transactionTitle}>{item.category}</Text>
+            <Text style={styles.transactionMeta} numberOfLines={1}>
+              {item.occurredOn} • {item.note || 'No description'}
             </Text>
           </View>
-          <Text style={[styles.amount, { color: amountColor }]}>
-            {sign}RM {Number(item.amount).toFixed(2)}
-          </Text>
         </View>
 
-        <View style={styles.metaRow}>
-          <Text style={styles.metaText}>{item.type.toUpperCase()}</Text>
-          <Text style={styles.metaText}>{item.occurredOn}</Text>
-        </View>
-
-        <View style={styles.cardActions}>
-          <Pressable onPress={() => openEditor(item.id)} style={styles.actionButton}>
-            <Text style={styles.actionButtonText}>Edit</Text>
-          </Pressable>
-          <Pressable onPress={() => confirmDelete(item.id)} style={[styles.actionButton, styles.destructiveButton]}>
-            <Text style={[styles.actionButtonText, styles.destructiveButtonText]}>Delete</Text>
-          </Pressable>
-        </View>
+        <Text style={[styles.transactionAmount, isIncome && styles.incomeAmount]}>
+          {isIncome ? '+' : '-'}RM {Math.abs(item.amount).toFixed(2)}
+        </Text>
       </Pressable>
     );
   };
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.headerCard}>
-        <View>
-          <Text style={styles.headerKicker}>My Wallet</Text>
-          <Text style={styles.headerTitle}>Track transactions in the cloud.</Text>
-          <Text style={styles.headerSubtitle}>
-            Tap any past transaction to edit its amount or category.
-          </Text>
-        </View>
-
-        <Pressable onPress={() => signOut()} style={styles.logoutButton}>
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Balance</Text>
-          <Text style={styles.summaryValue}>RM {totalBalance.toFixed(2)}</Text>
-        </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Transactions</Text>
-          <Text style={styles.summaryValue}>{transactions.length}</Text>
-        </View>
-      </View>
+      <View style={styles.ambientHalo} />
+      <View style={styles.ambientFade} />
 
       <FlatList
-        contentContainerStyle={styles.listContent}
         data={transactions}
         keyExtractor={item => item.id}
+        renderItem={renderTransaction}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <>
+            <View style={styles.headerRow}>
+              <View style={styles.headerTextWrap}>
+                <Text style={styles.welcomeLabel}>Welcome back,</Text>
+                <Text style={styles.welcomeTitle}>{dayGreeting()}, {userName || 'User'}</Text>
+              </View>
+
+              <Pressable style={styles.notifyButton} onPress={() => signOut()}>
+                <MaterialCommunityIcons name="bell-outline" size={22} color="#E2E8F0" />
+                <View style={styles.notifyDot} />
+              </Pressable>
+            </View>
+
+            <View style={styles.balanceCard}>
+              <View style={styles.balanceGlowOne} />
+              <View style={styles.balanceGlowTwo} />
+
+              <View style={styles.balanceTop}>
+                <View>
+                  <Text style={styles.balanceLabel}>Total Balance</Text>
+                  <Text style={styles.balanceValue}>RM {totalBalance.toFixed(2)}</Text>
+                </View>
+
+                <View style={styles.balanceIconWrap}>
+                  <MaterialCommunityIcons name="wallet-outline" size={20} color="#FFFFFF" />
+                </View>
+              </View>
+
+              <View style={styles.balanceBottom}>
+                <View style={styles.trendPill}>
+                  <MaterialCommunityIcons
+                    name={performancePct >= 0 ? 'trending-up' : 'trending-down'}
+                    size={14}
+                    color={performancePct >= 0 ? '#4ADE80' : '#F87171'}
+                  />
+                  <Text style={[styles.trendText, performancePct < 0 && styles.negativeTrendText]}>
+                    {performancePct >= 0 ? '+' : ''}
+                    {performancePct.toFixed(1)}%
+                  </Text>
+                </View>
+                <Text style={styles.vsText}>vs current cycle</Text>
+              </View>
+            </View>
+
+            <View style={styles.statsRow}>
+              <View style={styles.statCard}>
+                <View style={styles.statHead}>
+                  <View style={[styles.statIconWrap, styles.incomeIconWrap]}>
+                    <MaterialCommunityIcons name="arrow-down" size={16} color="#4ADE80" />
+                  </View>
+                  <Text style={styles.statLabel}>Income</Text>
+                </View>
+                <Text style={styles.statValue}>RM {incomeTotal.toFixed(2)}</Text>
+              </View>
+
+              <View style={styles.statCard}>
+                <View style={styles.statHead}>
+                  <View style={[styles.statIconWrap, styles.expenseIconWrap]}>
+                    <MaterialCommunityIcons name="arrow-up" size={16} color="#F87171" />
+                  </View>
+                  <Text style={styles.statLabel}>Expenses</Text>
+                </View>
+                <Text style={styles.statValue}>RM {expenseTotal.toFixed(2)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>Recent Transactions</Text>
+              <Pressable style={styles.sectionActionRow} onPress={() => openEditor()}>
+                <MaterialCommunityIcons name="plus-circle" size={18} color="#A78BFA" />
+                <Text style={styles.sectionAction}>Add New</Text>
+              </Pressable>
+            </View>
+          </>
+        }
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>{loading ? 'Loading transactions...' : 'No transactions yet'}</Text>
-            <Text style={styles.emptyText}>
-              Create a transaction to see the cloud-backed list here.
-            </Text>
+            <Text style={styles.emptyTitle}>{loading ? 'Loading...' : 'No transactions yet'}</Text>
+            <Text style={styles.emptyText}>Tap the add button to create your first record.</Text>
           </View>
         }
-        renderItem={renderTransaction}
-        showsVerticalScrollIndicator={false}
       />
 
       <Pressable style={styles.fab} onPress={() => openEditor()}>
-        <Text style={styles.fabText}>+ Add Transaction</Text>
+        <MaterialCommunityIcons name="plus-circle" size={62} color="#8B5CF6" />
       </Pressable>
     </SafeAreaView>
   );
@@ -153,174 +256,300 @@ const TransactionsScreen = ({ navigation }: Props) => {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F4F7FB',
-    paddingHorizontal: 16,
+    backgroundColor: '#0f0e17',
   },
-  headerCard: {
-    backgroundColor: '#0F172A',
-    borderRadius: 24,
-    padding: 20,
-    marginTop: 12,
+  ambientHalo: {
+    position: 'absolute',
+    width: 440,
+    height: 440,
+    borderRadius: 220,
+    top: -190,
+    right: -140,
+    backgroundColor: 'rgba(107, 70, 193, 0.22)',
   },
-  headerKicker: {
-    color: '#38BDF8',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-  },
-  headerTitle: {
-    color: '#F8FAFC',
-    fontSize: 24,
-    fontWeight: '800',
-    lineHeight: 30,
-    marginTop: 6,
-  },
-  headerSubtitle: {
-    color: '#94A3B8',
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 10,
-  },
-  logoutButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 999,
-    marginTop: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  logoutText: {
-    color: '#F8FAFC',
-    fontWeight: '700',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
-  },
-  summaryCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    flex: 1,
-    padding: 16,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 2,
-  },
-  summaryLabel: {
-    color: '#64748B',
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  summaryValue: {
-    color: '#0F172A',
-    fontSize: 20,
-    fontWeight: '800',
-    marginTop: 8,
+  ambientFade: {
+    position: 'absolute',
+    width: 360,
+    height: 360,
+    borderRadius: 180,
+    bottom: -140,
+    left: -90,
+    backgroundColor: 'rgba(67, 56, 202, 0.16)',
   },
   listContent: {
-    paddingTop: 16,
-    paddingBottom: 96,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 120,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderLeftWidth: 5,
-    marginBottom: 12,
-    padding: 16,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 14,
   },
-  cardPressed: {
-    transform: [{ scale: 0.99 }],
+  headerTextWrap: {
+    flex: 1,
+    paddingRight: 12,
   },
-  cardTopRow: {
+  welcomeLabel: {
+    color: '#94A3B8',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  welcomeTitle: {
+    color: '#F8FAFC',
+    fontSize: 28,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  notifyButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.09)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifyDot: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+  },
+  balanceCard: {
+    borderRadius: 24,
+    padding: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(107,70,193,0.30)',
+    backgroundColor: 'rgba(38, 21, 66, 0.60)',
+    marginBottom: 14,
+  },
+  balanceGlowOne: {
+    position: 'absolute',
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    top: -70,
+    right: -60,
+    backgroundColor: 'rgba(139, 92, 246, 0.45)',
+  },
+  balanceGlowTwo: {
+    position: 'absolute',
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    bottom: -52,
+    left: -36,
+    backgroundColor: 'rgba(107, 70, 193, 0.24)',
+  },
+  balanceTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  category: {
-    color: '#0F172A',
-    fontSize: 17,
+  balanceLabel: {
+    color: '#D1D5DB',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  balanceValue: {
+    color: '#FFFFFF',
+    fontSize: 36,
+    lineHeight: 42,
     fontWeight: '800',
+    marginTop: 6,
   },
-  note: {
-    color: '#64748B',
-    marginTop: 4,
-    maxWidth: 220,
+  balanceIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  amount: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
-  },
-  metaText: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-  },
-  cardActions: {
-    flexDirection: 'row',
-    gap: 10,
+  balanceBottom: {
     marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  actionButton: {
-    backgroundColor: '#E2E8F0',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+  trendPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(74, 222, 128, 0.25)',
+    backgroundColor: 'rgba(74, 222, 128, 0.14)',
   },
-  destructiveButton: {
-    backgroundColor: '#FEE2E2',
+  trendText: {
+    color: '#4ADE80',
+    fontSize: 11,
+    fontWeight: '800',
   },
-  actionButtonText: {
-    color: '#0F172A',
+  negativeTrendText: {
+    color: '#F87171',
+  },
+  vsText: {
+    color: '#A1A1AA',
+    fontSize: 11,
+    marginLeft: 8,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    padding: 14,
+  },
+  statHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  statIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  incomeIconWrap: {
+    backgroundColor: 'rgba(74, 222, 128, 0.14)',
+  },
+  expenseIconWrap: {
+    backgroundColor: 'rgba(248, 113, 113, 0.14)',
+  },
+  statLabel: {
+    color: '#94A3B8',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  statValue: {
+    color: '#FFFFFF',
+    fontSize: 21,
+    fontWeight: '800',
+  },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  sectionTitle: {
+    color: '#FFFFFF',
+    fontSize: 19,
+    fontWeight: '800',
+  },
+  sectionAction: {
+    color: '#A78BFA',
+    fontSize: 13,
     fontWeight: '700',
   },
-  destructiveButtonText: {
-    color: '#B91C1C',
+  sectionActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  transactionCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    padding: 14,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  transactionCardPressed: {
+    transform: [{ scale: 0.99 }],
+  },
+  transactionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  transactionIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(15,23,42,0.8)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  transactionTextWrap: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  transactionTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  transactionMeta: {
+    color: '#94A3B8',
+    fontSize: 11,
+    marginTop: 3,
+  },
+  transactionAmount: {
+    color: '#F8FAFC',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  incomeAmount: {
+    color: '#4ADE80',
   },
   emptyState: {
     alignItems: 'center',
-    marginTop: 48,
+    paddingVertical: 56,
     paddingHorizontal: 20,
   },
   emptyTitle: {
-    color: '#0F172A',
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '800',
   },
   emptyText: {
-    color: '#64748B',
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 8,
+    color: '#94A3B8',
     textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
   },
   fab: {
     position: 'absolute',
-    bottom: 20,
-    left: 16,
-    right: 16,
-    backgroundColor: '#0F172A',
-    borderRadius: 18,
-    paddingVertical: 16,
+    bottom: 24,
+    alignSelf: 'center',
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     alignItems: 'center',
-  },
-  fabText: {
-    color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: '800',
+    justifyContent: 'center',
+    shadowColor: '#8B5CF6',
+    shadowOpacity: 0.55,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
   },
 });
 

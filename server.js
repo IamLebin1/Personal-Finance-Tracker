@@ -14,10 +14,18 @@ initDb.serialize(() => {
   initDb.run(
     `CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fullName TEXT,
       email TEXT UNIQUE,
       password TEXT
     )`,
   );
+
+  // Backward-compatible migration for existing DB files created before fullName existed.
+  initDb.run('ALTER TABLE users ADD COLUMN fullName TEXT', err => {
+    if (err && !String(err.message).includes('duplicate column name')) {
+      console.log('users.fullName migration warning:', err.message);
+    }
+  });
 
   initDb.run(
     `CREATE TABLE IF NOT EXISTS transactions (
@@ -49,16 +57,16 @@ function rowToTransaction(row) {
 
 // POST register
 app.post('/api/register', (req, res) => {
-  const { email, password } = req.body;
+  const { fullName, email, password } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Missing email or password' });
+  if (!fullName || !email || !password) {
+    return res.status(400).json({ error: 'Missing fullName, email or password' });
   }
 
   const db = new sqlite3.Database(DB);
-  const stmt = `INSERT INTO users(email,password) VALUES(?,?)`;
+  const stmt = `INSERT INTO users(fullName,email,password) VALUES(?,?,?)`;
 
-  db.run(stmt, [email, password], function (err) {
+  db.run(stmt, [fullName, email, password], function (err) {
     if (err) return res.status(500).json({ error: err.message });
     res.status(201).json({ id: this.lastID, affected: this.changes });
     db.close();
@@ -87,6 +95,7 @@ app.post('/api/login', (req, res) => {
           affected: 1,
           user: {
             id: row.id,
+            fullName: row.fullName || '',
             email: row.email,
           },
         });

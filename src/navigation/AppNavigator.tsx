@@ -1,8 +1,9 @@
 import React from 'react';
 import { Pressable, Text } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useAuth } from '../context/AuthContext';
 import type {
   AuthStackParamList,
@@ -11,7 +12,7 @@ import type {
 } from './types';
 import LoginScreen from '../screens/Login';
 import RegisterScreen from '../screens/Register';
-import TransactionsScreen from '../screens/Transactions';
+import TransactionsScreen from '../screens/Transactions.tsx';
 import TransactionFormScreen from '../screens/TransactionForm';
 import AnalyticsScreen from '../screens/Analytics.tsx';
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -63,22 +64,68 @@ const TransactionsStackNavigator = () => {
 const MainTabs = () => {
   const { signOut } = useAuth();
 
+  const baseTabBarStyle = {
+    backgroundColor: 'rgba(22,21,31,0.95)',
+    borderTopColor: 'rgba(255,255,255,0.07)',
+    height: 74,
+    paddingTop: 6,
+    paddingBottom: 8,
+  };
+
   return (
     <Tabs.Navigator
       screenOptions={{
         headerStyle: { backgroundColor: '#111827' },
         headerTintColor: '#F8FAFC',
-        tabBarActiveTintColor: '#38BDF8',
+        tabBarActiveTintColor: '#A78BFA',
         tabBarInactiveTintColor: '#64748B',
-        tabBarStyle: { backgroundColor: '#FFFFFF', borderTopColor: '#E2E8F0' },
+        tabBarStyle: baseTabBarStyle,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '700',
+        },
       }}>
       <Tabs.Screen
         name="TransactionsStack"
         component={TransactionsStackNavigator}
-        options={{
+        options={({ route }) => {
+          const routeName = getFocusedRouteNameFromRoute(route) ?? 'Transactions';
+          const isFormRoute = routeName === 'TransactionForm';
+
+          return {
           title: 'Home',
           headerShown: false,
           headerRight: () => signOutButton(() => signOut()),
+          tabBarStyle: isFormRoute ? { display: 'none' } : baseTabBarStyle,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'home' : 'home-outline'} color={color} size={size + 2} />
+          ),
+        }}}
+      />
+      <Tabs.Screen
+        name="AddTransaction"
+        component={TransactionsStackNavigator}
+        listeners={({ navigation }) => ({
+          tabPress: e => {
+            e.preventDefault();
+            navigation.navigate('TransactionsStack', {
+              screen: 'TransactionForm',
+            } as never);
+          },
+        })}
+        options={{
+          title: 'Add',
+          headerShown: false,
+          tabBarIcon: ({ focused, size }) => (
+            <Ionicons
+              name={focused ? 'add-circle' : 'add-circle-outline'}
+              color={focused ? '#A78BFA' : '#64748B'}
+              size={size + 8}
+            />
+          ),
+          tabBarLabelStyle: {
+            marginTop: -2,
+          },
         }}
       />
       <Tabs.Screen
@@ -87,6 +134,13 @@ const MainTabs = () => {
         options={{
           title: 'Analytics',
           headerRight: () => signOutButton(() => signOut()),
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'stats-chart' : 'stats-chart-outline'}
+              color={color}
+              size={size + 2}
+            />
+          ),
         }}
       />
     </Tabs.Navigator>

@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '../navigation/types';
 
@@ -17,17 +18,52 @@ var config = require('../config/Config');
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
 
+const PasswordEye = ({ visible }: { visible: boolean }) => (
+  <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+    {!visible ? (
+      <>
+        <Path
+          d="M2 12C3.8 8.2 7.5 6 12 6C16.5 6 20.2 8.2 22 12C20.2 15.8 16.5 18 12 18C7.5 18 3.8 15.8 2 12Z"
+          stroke="#E9D5FF"
+          strokeWidth={1.8}
+        />
+        <Path d="M12 15.5C13.93 15.5 15.5 13.93 15.5 12C15.5 10.07 13.93 8.5 12 8.5C10.07 8.5 8.5 10.07 8.5 12C8.5 13.93 10.07 15.5 12 15.5Z" stroke="#E9D5FF" strokeWidth={1.8} />
+      </>
+    ) : (
+      <>
+        <Path
+          d="M2 12C3.8 8.2 7.5 6 12 6C16.5 6 20.2 8.2 22 12C20.2 15.8 16.5 18 12 18C7.5 18 3.8 15.8 2 12Z"
+          stroke="#E9D5FF"
+          strokeWidth={1.8}
+        />
+        <Path d="M4 4L20 20" stroke="#E9D5FF" strokeWidth={1.8} strokeLinecap="round" />
+      </>
+    )}
+  </Svg>
+);
+
 const RegisterScreen = ({ navigation }: Props) => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const _register = () => {
-    if (!fullName.trim() || !email.trim() || !password.trim()) {
+    const trimmedFullName = fullName.trim();
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+
+    if (!trimmedFullName || !trimmedEmail || !trimmedPassword) {
       Alert.alert('Missing details', 'Enter your full name, email, and password.');
+      return;
+    }
+
+    if (trimmedFullName.length < 2) {
+      Alert.alert('Invalid name', 'Please enter your full name.');
       return;
     }
 
@@ -54,8 +90,9 @@ const RegisterScreen = ({ navigation }: Props) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        email: email,
-        password: password,
+        fullName: trimmedFullName,
+        email: trimmedEmail,
+        password: trimmedPassword,
       }),
     })
       .then(respond => respond.json())
@@ -69,7 +106,10 @@ const RegisterScreen = ({ navigation }: Props) => {
           setPassword('');
           setConfirmPassword('');
           setAgreeTerms(false);
-          navigation.navigate('Login');
+          navigation.navigate('Login', {
+            prefillEmail: trimmedEmail,
+            registeredName: trimmedFullName,
+          });
         } else {
           Alert.alert('Registration failed', 'Please try again.');
         }
@@ -82,8 +122,10 @@ const RegisterScreen = ({ navigation }: Props) => {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={[styles.bloom, styles.bloomTop]} />
-      <View style={[styles.bloom, styles.bloomBottom]} />
+      <View style={styles.bgLayer}>
+        <View style={styles.ambientHalo} />
+        <View style={styles.ambientFade} />
+      </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.topBar}>
@@ -106,7 +148,7 @@ const RegisterScreen = ({ navigation }: Props) => {
           <TextInput
             autoCapitalize="words"
             autoCorrect={false}
-            placeholder="John Doe"
+            placeholder="Enter your name"
             placeholderTextColor="#636277"
             style={styles.input}
             value={fullName}
@@ -118,46 +160,60 @@ const RegisterScreen = ({ navigation }: Props) => {
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="email-address"
-            placeholder="name@premium.com"
+            placeholder="name@xxx.com"
             placeholderTextColor="#636277"
             style={styles.input}
             value={email}
             onChangeText={setEmail}
           />
 
-          <View style={styles.passwordRow}>
-            <View style={styles.passwordCol}>
-              <Text style={styles.label}>PASSWORD</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder="........"
-                placeholderTextColor="#636277"
-                secureTextEntry
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-              />
-            </View>
+          <Text style={styles.label}>PASSWORD</Text>
+          <View style={styles.passwordWrap}>
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="off"
+              importantForAutofill="no"
+              placeholder="........"
+              placeholderTextColor="#636277"
+              secureTextEntry={!showPassword}
+              cursorColor="#D8B4FE"
+              selectionColor="#D8B4FE"
+              style={[styles.input, styles.passwordInput, styles.passwordInputTone]}
+              value={password}
+              onChangeText={setPassword}
+            />
+            <Pressable style={styles.eyeButton} onPress={() => setShowPassword(!showPassword)}>
+              <PasswordEye visible={showPassword} />
+            </Pressable>
+          </View>
 
-            <View style={styles.passwordCol}>
-              <Text style={styles.label}>CONFIRM</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder="........"
-                placeholderTextColor="#636277"
-                secureTextEntry
-                style={styles.input}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-              />
-            </View>
+          <Text style={styles.label}>CONFIRM PASSWORD</Text>
+          <View style={styles.passwordWrap}>
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="off"
+              importantForAutofill="no"
+              placeholder="........"
+              placeholderTextColor="#636277"
+              secureTextEntry={!showConfirmPassword}
+              cursorColor="#D8B4FE"
+              selectionColor="#D8B4FE"
+              style={[styles.input, styles.passwordInput, styles.passwordInputTone]}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+            />
+            <Pressable
+              style={styles.eyeButton}
+              onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
+              <PasswordEye visible={showConfirmPassword} />
+            </Pressable>
           </View>
 
           <Pressable style={styles.termsRow} onPress={() => setAgreeTerms(!agreeTerms)}>
             <View style={[styles.checkbox, agreeTerms && styles.checkboxChecked]}>
-              {agreeTerms ? <Text style={styles.checkboxMark}>X</Text> : null}
+              {agreeTerms ? <Text style={styles.checkboxMark}>✓</Text> : null}
             </View>
             <Text style={styles.termsText}>I agree to the Terms of Service and Privacy Policy.</Text>
           </Pressable>
@@ -171,36 +227,11 @@ const RegisterScreen = ({ navigation }: Props) => {
             </Text>
           </TouchableOpacity>
 
-          <View style={styles.dividerWrap}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR JOIN WITH</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <View style={styles.socialRow}>
-            <TouchableOpacity style={styles.socialButton}>
-              <Text style={styles.socialButtonText}>Google</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.socialButton}>
-              <Text style={styles.socialButtonText}>Facebook</Text>
-            </TouchableOpacity>
-          </View>
-
           <TouchableOpacity onPress={() => navigation.navigate('Login')}>
             <Text style={styles.link}>Already have an account? Sign In</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.trustRow}>
-          <View style={styles.trustCard}>
-            <Text style={styles.trustTitle}>BANK GRADE</Text>
-            <Text style={styles.trustBody}>AES-256 Encryption</Text>
-          </View>
-          <View style={styles.trustCard}>
-            <Text style={styles.trustTitle}>INSTANT SYNC</Text>
-            <Text style={styles.trustBody}>Real-time tracking</Text>
-          </View>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -217,23 +248,30 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 36,
   },
-  bloom: {
+  bgLayer: {
     position: 'absolute',
-    borderRadius: 999,
-    backgroundColor: 'rgba(107, 70, 193, 0.16)',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
-  bloomTop: {
-    width: 300,
-    height: 300,
-    top: -100,
+  ambientHalo: {
+    position: 'absolute',
+    width: 460,
+    height: 460,
+    borderRadius: 230,
+    top: -170,
     right: -120,
+    backgroundColor: 'rgba(107, 70, 193, 0.22)',
   },
-  bloomBottom: {
-    width: 340,
-    height: 340,
-    bottom: -120,
-    left: -130,
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+  ambientFade: {
+    position: 'absolute',
+    width: 380,
+    height: 380,
+    borderRadius: 190,
+    bottom: -150,
+    left: -80,
+    backgroundColor: 'rgba(67, 56, 202, 0.14)',
   },
   topBar: {
     minHeight: 48,
@@ -310,12 +348,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  passwordRow: {
-    flexDirection: 'row',
-    gap: 10,
+  passwordWrap: {
+    position: 'relative',
+    justifyContent: 'center',
   },
-  passwordCol: {
-    flex: 1,
+  passwordInput: {
+    paddingRight: 78,
+  },
+  eyeButton: {
+    position: 'absolute',
+    right: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(216, 180, 254, 0.14)',
+  },
+  passwordInputTone: {
+    color: '#E9D5FF',
+    borderColor: 'rgba(216, 180, 254, 0.35)',
   },
   termsRow: {
     marginTop: 16,
@@ -364,72 +416,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
-  dividerWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 12,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  dividerText: {
-    color: '#94a3b8',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1,
-    marginHorizontal: 10,
-  },
-  socialRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  socialButton: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 11,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    alignItems: 'center',
-  },
-  socialButtonText: {
-    color: '#f6f6f8',
-    fontSize: 13,
-    fontWeight: '600',
-  },
   link: {
     color: '#d8b4fe',
     fontSize: 14,
     fontWeight: '700',
     marginTop: 18,
     textAlign: 'center',
-  },
-  trustRow: {
-    marginTop: 14,
-    flexDirection: 'row',
-    gap: 10,
-  },
-  trustCard: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    padding: 12,
-  },
-  trustTitle: {
-    color: '#f6f6f8',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  trustBody: {
-    color: '#94a3b8',
-    fontSize: 10,
-    marginTop: 5,
   },
 });
 
