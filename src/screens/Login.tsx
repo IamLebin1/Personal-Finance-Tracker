@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import {
   Alert,
-  Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
+
+var config = require('../config/Config');
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -21,20 +23,41 @@ const LoginScreen = ({ navigation }: Props) => {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const onLogin = async () => {
+  const _login = () => {
     if (!email.trim() || !password.trim()) {
       Alert.alert('Missing details', 'Enter your email and password.');
       return;
     }
 
-    try {
-      setSubmitting(true);
-      await login(email, password);
-    } catch (error: any) {
-      Alert.alert('Login failed', error?.message ?? 'Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
+    setSubmitting(true);
+
+    fetch(config.settings.serverPath + '/api/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: email,
+        password: password,
+      }),
+    })
+      .then(respond => respond.json())
+      .then(respondJson => {
+        setSubmitting(false);
+
+        if (respondJson.affected > 0) {
+          Alert.alert('Success', 'Login successful.');
+          setEmail('');
+          setPassword('');
+          login();
+        } else {
+          Alert.alert('Login failed', 'Invalid email or password.');
+        }
+      })
+      .catch(err => {
+        setSubmitting(false);
+        Alert.alert('Error', 'Unable to login. Check your connection.');
+      });
   };
 
   return (
@@ -73,18 +96,18 @@ const LoginScreen = ({ navigation }: Props) => {
             onChangeText={setPassword}
           />
 
-          <Pressable
-            style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}
-            onPress={onLogin}
+          <TouchableOpacity
+            style={[styles.primaryButton, submitting && styles.buttonDisabled]}
+            onPress={_login}
             disabled={submitting}>
             <Text style={styles.primaryButtonText}>
               {submitting ? 'Signing in...' : 'Sign In'}
             </Text>
-          </Pressable>
+          </TouchableOpacity>
 
-          <Pressable onPress={() => navigation.navigate('Register')}>
+          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
             <Text style={styles.link}>Create a new account</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -153,8 +176,8 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     alignItems: 'center',
   },
-  buttonPressed: {
-    opacity: 0.85,
+  buttonDisabled: {
+    opacity: 0.6,
   },
   primaryButtonText: {
     color: '#052E16',

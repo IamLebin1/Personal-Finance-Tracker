@@ -24,7 +24,7 @@ type Props = NativeStackScreenProps<TransactionsStackParamList, 'TransactionForm
 const categories = ['Food', 'Transport', 'Bills', 'Shopping', 'Health', 'Savings', 'Entertainment', 'Other'];
 
 const TransactionFormScreen = ({ navigation, route }: Props) => {
-  const { user } = useAuth();
+  const { isLoggedIn } = useAuth();
   const transactionId = route.params?.transactionId;
   const [loading, setLoading] = useState(Boolean(transactionId));
   const [amount, setAmount] = useState('');
@@ -65,7 +65,7 @@ const TransactionFormScreen = ({ navigation, route }: Props) => {
   }, [transactionId]);
 
   const onSave = async () => {
-    if (!user) {
+    if (!isLoggedIn) {
       Alert.alert('Not signed in', 'Please log in again.');
       return;
     }
@@ -79,7 +79,7 @@ const TransactionFormScreen = ({ navigation, route }: Props) => {
     try {
       setSubmitting(true);
       await saveTransaction(
-        user.uid,
+        '1',
         {
           amount: parsedAmount,
           category,

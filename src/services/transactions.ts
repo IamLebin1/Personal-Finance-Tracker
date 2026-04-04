@@ -1,96 +1,108 @@
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  updateDoc,
-  where,
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
+var config = require('../config/Config');
 import type {
   TransactionDraft,
   TransactionRecord,
 } from '../types/transactions';
 
-const transactionsCollection = collection(db, 'transactions');
-
-const mapDocument = (snapshot: any): TransactionRecord => {
-  const data = snapshot.data();
-
+const mapApiTransaction = (row: any): TransactionRecord => {
   return {
-    id: snapshot.id,
-    userId: data.userId,
-    amount: Number(data.amount),
-    category: data.category,
-    note: data.note ?? '',
-    type: data.type,
-    occurredOn: data.occurredOn,
-    createdAt: data.createdAt ?? 0,
-    updatedAt: data.updatedAt ?? data.createdAt ?? 0,
+    id: String(row.id),
+    userId: String(row.userId ?? ''),
+    amount: Number(row.amount),
+    category: row.category ?? 'Other',
+    note: row.note ?? '',
+    type: row.type === 'income' ? 'income' : 'expense',
+    occurredOn: row.occurredOn ?? new Date().toISOString().slice(0, 10),
+    createdAt: 0,
+    updatedAt: 0,
   };
 };
 
+const fetchTransactions = () => {
+  return fetch(config.settings.serverPath + '/api/transactions')
+    .then(response => response.json())
+    .then(data => {
+      if (!Array.isArray(data)) {
+        return [];
+      }
+
+      return data.map(mapApiTransaction);
+    });
+};
+
 export const subscribeToTransactions = (
-  userId: string,
+  _userId: string,
   onChange: (records: TransactionRecord[]) => void,
 ) => {
-  const transactionQuery = query(
-    transactionsCollection,
-    where('userId', '==', userId),
-    orderBy('createdAt', 'desc'),
-    limit(200),
-  );
+  fetchTransactions()
+    .then(onChange)
+    .catch(() => onChange([]));
 
-  return onSnapshot(transactionQuery, snapshot => {
-    onChange(snapshot.docs.map(mapDocument));
-  });
+  const timer = setInterval(() => {
+    fetchTransactions()
+      .then(onChange)
+      .catch(() => onChange([]));
+  }, 1500);
+
+  return () => {
+    clearInterval(timer);
+  };
 };
 
-export const getTransactionById = async (transactionId: string) => {
-  const ref = doc(db, 'transactions', transactionId);
-  const snapshot = await getDoc(ref);
+export const getTransactionById = (transactionId: string) => {
+  return fetch(config.settings.serverPath + '/api/transactions/' + transactionId)
+    .then(response => response.json())
+    .then(data => {
+      if (!data) {
+        return null;
+      }
 
-  if (!snapshot.exists()) {
-    return null;
-  }
-
-  return mapDocument(snapshot);
+      return mapApiTransaction(data);
+    });
 };
 
-export const saveTransaction = async (
+export const saveTransaction = (
   userId: string,
   draft: TransactionDraft,
   transactionId?: string,
 ) => {
   const payload = {
-    userId,
+    userId: Number(userId) || 1,
     amount: Number(draft.amount),
     category: draft.category.trim(),
     note: draft.note.trim(),
     type: draft.type,
     occurredOn: draft.occurredOn,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
   };
 
   if (transactionId) {
-    const { createdAt, ...updatePayload } = payload;
-
-    await updateDoc(doc(db, 'transactions', transactionId), {
-      ...updatePayload,
-    });
-    return transactionId;
+    return fetch(config.settings.serverPath + '/api/transactions/' + transactionId, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        amount: payload.amount,
+        category: payload.category,
+      }),
+    })
+      .then(response => response.json())
+      .then(() => transactionId);
   }
 
-  const created = await addDoc(transactionsCollection, payload);
-  return created.id;
+  return fetch(config.settings.serverPath + '/api/transactions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+    .then(response => response.json())
+    .then(data => String(data.id));
 };
 
-export const removeTransaction = async (transactionId: string) => {
-  await deleteDoc(doc(db, 'transactions', transactionId));
+export const removeTransaction = (transactionId: string) => {
+  return fetch(config.settings.serverPath + '/api/transactions/' + transactionId, {
+    method: 'DELETE',
+  }).then(() => undefined);
 };

@@ -1,91 +1,158 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   FlatList,
-  Pressable,
   SafeAreaView,
   StyleSheet,
   Text,
+  TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { PieChart } from 'react-native-chart-kit';
-import type { TransactionRecord } from '../types/transactions';
-import { useAuth } from '../context/AuthContext';
-import { subscribeToTransactions } from '../services/transactions';
-import { groupSpendingByCategory } from '../utils/analytics';
+var config = require('../config/Config');
 
 const screenWidth = Dimensions.get('window').width;
+const chartColors = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#14B8A6'];
 
-const chartColors = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#14B8A6', '#EC4899'];
+const AnalyticsScreen = ({ navigation }: any) => {
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [transactionId, setTransactionId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [category, setCategory] = useState('');
 
-const AnalyticsScreen = () => {
-  const { user, signOut } = useAuth();
-  const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
+  const _prepareChartData = (list: any[]) => {
+    var categoryTotals: any = {};
+    var chartArray: any[] = [];
+    var categories = [];
+    var i = 0;
 
-  useEffect(() => {
-    if (!user) {
-      setTransactions([]);
+    for (i = 0; i < list.length; i++) {
+      if (list[i].type === 'expense') {
+        if (!categoryTotals[list[i].category]) {
+          categoryTotals[list[i].category] = 0;
+        }
+        categoryTotals[list[i].category] = categoryTotals[list[i].category] + Number(list[i].amount);
+      }
+    }
+
+    categories = Object.keys(categoryTotals);
+
+    for (i = 0; i < categories.length; i++) {
+      chartArray.push({
+        name: categories[i],
+        population: categoryTotals[categories[i]],
+        color: chartColors[i % chartColors.length],
+        legendFontColor: '#0F172A',
+        legendFontSize: 12,
+      });
+    }
+
+    if (chartArray.length === 0) {
+      chartArray.push({
+        name: 'No spending',
+        population: 1,
+        color: '#CBD5E1',
+        legendFontColor: '#0F172A',
+        legendFontSize: 12,
+      });
+    }
+
+    setChartData(chartArray);
+  };
+
+  const _load = () => {
+    fetch(config.settings.serverPath + '/api/transactions')
+      .then(response => response.json())
+      .then(data => {
+        const list = Array.isArray(data) ? data : [];
+        setTransactions(list);
+        _prepareChartData(list);
+      })
+      .catch(() => {
+        Alert.alert('Error', 'Unable to load transactions.');
+      });
+  };
+
+  const _edit = () => {
+    if (!transactionId || amount === '' || category === '') {
+      Alert.alert('Error', 'Please select a transaction first.');
       return;
     }
 
-    const unsubscribe = subscribeToTransactions(user.uid, setTransactions);
-    return unsubscribe;
-  }, [user]);
+    fetch(config.settings.serverPath + '/api/transactions/' + transactionId, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        amount: Number(amount),
+        category: category,
+      }),
+    })
+      .then(respond => respond.json())
+      .then(respondJson => {
+        if (respondJson.affected > 0) {
+          Alert.alert('Success', 'Transaction updated successfully.');
+          _load();
+        } else {
+          Alert.alert('Error', 'No transaction was updated.');
+        }
+      })
+      .catch(() => {
+        Alert.alert('Error', 'Unable to update transaction.');
+      });
+  };
 
-  const categorySummary = groupSpendingByCategory(transactions);
-  const expenseTransactions = transactions.filter(item => item.type === 'expense');
-  const totalSpent = expenseTransactions.reduce((sum, transaction) => sum + transaction.amount, 0);
-  const totalIncome = transactions
-    .filter(item => item.type === 'income')
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
-  const chartData =
-    categorySummary.length > 0
-      ? categorySummary.map((item, index) => ({
-          name: item.category,
-          population: Number(item.total.toFixed(2)),
-          color: chartColors[index % chartColors.length],
-          legendFontColor: '#0F172A',
-          legendFontSize: 12,
-        }))
-      : [
-          {
-            name: 'No spending',
-            population: 1,
-            color: '#CBD5E1',
-            legendFontColor: '#0F172A',
-            legendFontSize: 12,
-          },
-        ];
+  const _pickTransaction = (item: any) => {
+    setTransactionId(String(item.id || item._id || ''));
+    setAmount(String(item.amount || ''));
+    setCategory(String(item.category || ''));
+  };
+
+  useEffect(() => {
+    _load();
+  }, []);
 
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.headerCard}>
         <View>
           <Text style={styles.headerKicker}>Analytics</Text>
-          <Text style={styles.headerTitle}>See where your money goes.</Text>
-          <Text style={styles.headerSubtitle}>
-            Spending is grouped by category and rendered as a pie chart from live cloud data.
-          </Text>
+          <Text style={styles.headerTitle}>See where your money goes</Text>
+          <Text style={styles.headerSubtitle}>Tap a transaction below to edit amount and category.</Text>
         </View>
 
-        <Pressable onPress={() => signOut()} style={styles.logoutButton}>
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </Pressable>
+        <TouchableOpacity onPress={() => navigation.navigate('TransactionsStack')} style={styles.navButton}>
+          <Text style={styles.navButtonText}>Go To Home</Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.summaryGrid}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Spent</Text>
-          <Text style={styles.summaryValue}>RM {totalSpent.toFixed(2)}</Text>
-        </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Income</Text>
-          <Text style={styles.summaryValue}>RM {totalIncome.toFixed(2)}</Text>
-        </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Categories</Text>
-          <Text style={styles.summaryValue}>{categorySummary.length}</Text>
-        </View>
+      <View style={styles.formCard}>
+        <Text style={styles.label}>Amount</Text>
+        <TextInput
+          style={styles.input}
+          value={amount}
+          onChangeText={setAmount}
+          keyboardType="decimal-pad"
+          placeholder="Amount"
+          placeholderTextColor="#94A3B8"
+        />
+
+        <Text style={styles.label}>Category</Text>
+        <TextInput
+          style={styles.input}
+          value={category}
+          onChangeText={setCategory}
+          placeholder="Category"
+          placeholderTextColor="#94A3B8"
+        />
+
+        <TouchableOpacity style={styles.updateButton} onPress={_edit}>
+          <Text style={styles.updateButtonText}>Update Transaction</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.chartCard}>
@@ -107,20 +174,20 @@ const AnalyticsScreen = () => {
       </View>
 
       <View style={styles.listCard}>
-        <Text style={styles.sectionTitle}>Top Categories</Text>
+        <Text style={styles.sectionTitle}>Transactions</Text>
         <FlatList
-          data={categorySummary}
-          keyExtractor={item => item.category}
+          data={transactions}
+          keyExtractor={item => String(item.id || item._id)}
           renderItem={({ item, index }) => (
-            <View style={styles.row}>
+            <TouchableOpacity style={styles.row} onPress={() => _pickTransaction(item)}>
               <View style={styles.rowLeft}>
                 <View style={[styles.swatch, { backgroundColor: chartColors[index % chartColors.length] }]} />
                 <Text style={styles.rowLabel}>{item.category}</Text>
               </View>
-              <Text style={styles.rowValue}>RM {item.total.toFixed(2)}</Text>
-            </View>
+              <Text style={styles.rowValue}>RM {Number(item.amount || 0).toFixed(2)}</Text>
+            </TouchableOpacity>
           )}
-          ListEmptyComponent={<Text style={styles.emptyText}>No expense data yet.</Text>}
+          ListEmptyComponent={<Text style={styles.emptyText}>No transaction data yet.</Text>}
         />
       </View>
     </SafeAreaView>
@@ -143,14 +210,13 @@ const styles = StyleSheet.create({
     color: '#38BDF8',
     fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 1.1,
+    letterSpacing: 1,
     textTransform: 'uppercase',
   },
   headerTitle: {
     color: '#F8FAFC',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
-    lineHeight: 30,
     marginTop: 6,
   },
   headerSubtitle: {
@@ -159,7 +225,7 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: 10,
   },
-  logoutButton: {
+  navButton: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 999,
@@ -167,38 +233,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  logoutText: {
+  navButtonText: {
     color: '#F8FAFC',
     fontWeight: '700',
   },
-  summaryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 16,
-  },
-  summaryCard: {
+  formCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    flexGrow: 1,
-    flexBasis: '31%',
-    padding: 14,
+    marginTop: 16,
+    padding: 16,
     shadowColor: '#0F172A',
     shadowOpacity: 0.08,
     shadowRadius: 10,
     elevation: 2,
   },
-  summaryLabel: {
-    color: '#64748B',
-    fontSize: 11,
+  label: {
+    color: '#334155',
+    fontSize: 13,
     fontWeight: '700',
-    textTransform: 'uppercase',
+    marginBottom: 8,
   },
-  summaryValue: {
+  input: {
+    backgroundColor: '#EEF2FF',
+    borderRadius: 12,
     color: '#0F172A',
-    fontSize: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  updateButton: {
+    backgroundColor: '#16A34A',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  updateButtonText: {
+    color: '#052E16',
     fontWeight: '800',
-    marginTop: 8,
   },
   chartCard: {
     backgroundColor: '#FFFFFF',
@@ -220,6 +291,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 2,
+    flex: 1,
   },
   sectionTitle: {
     color: '#0F172A',

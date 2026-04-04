@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { Pressable, Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -13,9 +13,7 @@ import LoginScreen from '../screens/Login';
 import RegisterScreen from '../screens/Register';
 import TransactionsScreen from '../screens/Transactions';
 import TransactionFormScreen from '../screens/TransactionForm';
-import AnalyticsScreen from '../screens/Analytics';
-
-const RootStack = createNativeStackNavigator();
+import AnalyticsScreen from '../screens/Analytics.tsx';
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const TransactionsStack = createNativeStackNavigator<TransactionsStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
@@ -96,25 +94,11 @@ const MainTabs = () => {
 };
 
 export const AppNavigator = () => {
-  const { initializing, user } = useAuth();
-
-  if (initializing) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0F172A' }}>
-        <ActivityIndicator color="#38BDF8" size="large" />
-      </View>
-    );
-  }
+  const { isLoggedIn } = useAuth();
 
   return (
-    <NavigationContainer>
-      <RootStack.Navigator screenOptions={{ headerShown: false }}>
-        {user ? (
-          <RootStack.Screen name="Main" component={MainTabs} />
-        ) : (
-          <RootStack.Screen name="Auth" component={AuthFlow} />
-        )}
-      </RootStack.Navigator>
+    <NavigationContainer key={isLoggedIn ? 'main' : 'auth'}>
+      {isLoggedIn ? <MainTabs /> : <AuthFlow />}
     </NavigationContainer>
   );
 };

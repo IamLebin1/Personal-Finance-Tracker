@@ -19,25 +19,25 @@ type Props = NativeStackScreenProps<TransactionsStackParamList, 'Transactions'>;
 const palette = ['#38BDF8', '#22C55E', '#F59E0B', '#A855F7', '#EF4444', '#14B8A6'];
 
 const TransactionsScreen = ({ navigation }: Props) => {
-  const { user, signOut } = useAuth();
+  const { isLoggedIn, signOut } = useAuth();
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) {
+    if (!isLoggedIn) {
       setTransactions([]);
       setLoading(false);
       return;
     }
 
     setLoading(true);
-    const unsubscribe = subscribeToTransactions(user.uid, nextTransactions => {
+    const unsubscribe = subscribeToTransactions('1', (nextTransactions: TransactionRecord[]) => {
       setTransactions(nextTransactions);
       setLoading(false);
     });
 
     return unsubscribe;
-  }, [user]);
+  }, [isLoggedIn]);
 
   const totalBalance = transactions.reduce((sum, transaction) => {
     const signedAmount = transaction.type === 'income' ? transaction.amount : -transaction.amount;

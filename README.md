@@ -1,168 +1,84 @@
-# Personal Finance Tracker (UECS3253 Assignment)
+# Personal Finance Tracker
 
-This is a mobile application developed for the **UECS3253 Wireless Application Development** course at Universiti Tunku Abdul Rahman (UTAR). The app is built using **React Native** and focuses on providing users with a seamless way to track their daily expenses and income.
+Mobile app for tracking income and expenses, built with React Native and a simple Node.js + SQLite backend API.
 
----
-
-## Team Members (Group P4)
+## Team (Group P4)
 
 | Student Name | Student ID | Programme | Role |
 | :--- | :--- | :--- | :--- |
-| **Chin Lok Bin** | 2400968 | Software Engineering | Team Leader / Developer |
-| **Kiu Chun Woon** | 2401624 | Software Engineering | Developer |
-| **Tan Yi Wen** | 2400800 | Software Engineering | Developer |
-| **Wong Xiang Rou** | 2401634 | Software Engineering | Developer |
+| Chin Lok Bin | 2400968 | Software Engineering | Team Leader / Developer |
+| Kiu Chun Woon | 2401624 | Software Engineering | Developer |
+| Tan Yi Wen | 2400800 | Software Engineering | Developer |
+| Wong Xiang Rou | 2401634 | Software Engineering | Developer |
 
----
+## Features
 
-## Project Overview
-
-The **Personal Finance Tracker** aims to help users manage their personal finances through local data persistence and cloud synchronization. This project fulfills the requirements for CO2, CO3, and CO4 of the course.
-
-### Key Features
-* [cite_start]**User Interface (CO2):** Built with custom React Native components and high-quality UI modules[cite: 10, 30, 32].
-* [cite_start]**Navigation:** Implementation of Stack, Tab, and Drawer navigators for a smooth user experience[cite: 33].
-* [cite_start]**Data Persistence (CO3):** Local storage using **SQLite** for secure and persistent financial records (CRUD operations)[cite: 11, 38, 61].
-* [cite_start]**Cloud Connectivity (CO4):** Integration with a Web-based API for real-time currency exchange rates and cloud backup[cite: 12, 41].
-
----
+- Email/password registration and login
+- Add, edit, delete, and list transactions
+- Analytics pie chart by spending category
+- Login-first navigation flow
 
 ## Tech Stack
-* [cite_start]**Framework:** React Native [cite: 21]
-* [cite_start]**Navigation:** React Navigation (Stack, Drawer, Tab) [cite: 33]
-* [cite_start]**Database:** SQLite / AsyncStorage [cite: 37, 38]
-* [cite_start]**API Connectivity:** Fetch API / Axios [cite: 41]
-* **Version Control:** Git & GitHub
 
-## Cloud Setup
-* The app now uses **Firebase Auth** for email/password login and **Firestore** for user-scoped transaction storage.
-* Replace the placeholder values in [src/config/firebase.ts](src/config/firebase.ts) with your Firebase project credentials.
-* Apply the Firestore security rules in [firestore.rules](firestore.rules) so each user can only read and write their own transactions.
+- React Native (TypeScript)
+- React Navigation (stack + tabs)
+- Express.js backend
+- SQLite database (`membership.sqlite`)
+- Fetch API for client-server communication
 
----
+## Project Structure
 
-## Project Structure (Deliverables)
-In accordance with the assignment specifications, the final submission will include:
-1.  [cite_start]**Technical Report:** Detailed documentation of features, navigation, and CRUD operations[cite: 56, 67].
-2.  [cite_start]**Source Code:** The complete React Native project folder (excluding `node_modules`)[cite: 63].
+- Frontend app: [App.tsx](App.tsx)
+- Backend server: [server.js](server.js)
+- API base URL config: [src/config/Config.tsx](src/config/Config.tsx)
+- Screens: [src/screens](src/screens)
 
----
+## Quick Start
 
-## Important Dates
-* **Deadline:** 3rd May 2026, 11:59 P.M. (Week 13 Sunday) [cite_start][cite: 16]
+1. Install dependencies:
 
----
+```bash
+npm install
+```
 
-## Setup Instructions
-1. Clone the repository:
-   ```bash
-   git clone [https://github.com/iamLebin1/Personal-Finance-Tracker.git](https://github.com/iamLebin1/Personal-Finance-Tracker.git)
-   ```
+2. Start backend server (from this project folder):
 
-2. Install dependencies:
-    ```bash
-    npm install
-    ```
-3. Run the application:
-    ```bash
-    npx react-native run-android
-    bash
-    ```
+```bash
+npm run server
+```
 
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+3. In another terminal, start Metro:
 
-# Getting Started
-
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
-
-## Step 1: Start Metro
-
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
-
-To start the Metro dev server, run the following command from the root of your React Native project:
-
-```sh
-# Using npm
+```bash
 npm start
-
-# OR using Yarn
-yarn start
 ```
 
-## Step 2: Build and run your app
+4. Run Android app:
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
-
-### Android
-
-```sh
-# Using npm
+```bash
 npm run android
-
-# OR using Yarn
-yarn android
 ```
 
-### iOS
+## Server URL Setup
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+The app reads backend URL from [src/config/Config.tsx](src/config/Config.tsx) and [src/config/Config.ts](src/config/Config.ts).
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+- Android emulator: `http://10.0.2.2:5000`
+- Physical Android device: `http://YOUR_PC_LAN_IP:5000` (example: `http://192.168.000.0:5000`)
 
-```sh
-bundle install
-```
+See [SERVER_SETUP.md](SERVER_SETUP.md) for full steps and troubleshooting.
 
-Then, and every time you update your native dependencies, run:
+## Important Notes
 
-```sh
-bundle exec pod install
-```
+- Run backend in the correct folder (`Personal-Finance-Tracker`).
+- If backend is started in a parent directory, npm cannot find `package.json`.
+- If physical device cannot connect, check Windows Firewall and ensure phone/PC are on same Wi-Fi.
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+## API Endpoints
 
-```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
-```
-
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
-
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
-
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+- `POST /api/register`
+- `POST /api/login`
+- `GET /api/transactions`
+- `POST /api/transactions`
+- `PUT /api/transactions/:id`
+- `DELETE /api/transactions/:id`

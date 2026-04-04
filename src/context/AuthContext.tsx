@@ -1,47 +1,23 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import type { User } from 'firebase/auth';
-import {
-  loginWithEmailPassword,
-  logout,
-  onAuthStateChanged,
-  registerWithEmailPassword,
-} from '../services/auth';
-import { auth } from '../config/firebase';
+import React, { createContext, useContext, useState } from 'react';
 
 type AuthContextValue = {
-  user: User | null;
-  initializing: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
-  signOut: () => Promise<void>;
+  isLoggedIn: boolean;
+  login: () => void;
+  signOut: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [initializing, setInitializing] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, nextUser => {
-      setUser(nextUser);
-      setInitializing(false);
-    });
-
-    return unsubscribe;
-  }, []);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   const value: AuthContextValue = {
-    user,
-    initializing,
-    login: async (email, password) => {
-      await loginWithEmailPassword(email, password);
+    isLoggedIn,
+    login: () => {
+      setIsLoggedIn(true);
     },
-    register: async (email, password) => {
-      await registerWithEmailPassword(email, password);
-    },
-    signOut: async () => {
-      await logout();
+    signOut: () => {
+      setIsLoggedIn(false);
     },
   };
 
