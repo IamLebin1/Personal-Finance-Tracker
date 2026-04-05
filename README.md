@@ -56,9 +56,18 @@ In accordance with the assignment specifications, the final submission will incl
 
 2. Install dependencies:
     ```bash
-    npm install
+    npm install --legacy-peer-deps
     ```
-3. Run the application:
+3. Create a local environment file:
+    ```bash
+    copy .env.example .env
+    ```
+4. SQLite local database config (shared team defaults):
+    - `APP_MODE=local`
+    - `SQLITE_DB_NAME=finance_tracker.sqlite`
+    - `SQLITE_SEED_DEMO=true`
+
+5. Run the application:
     ```bash
     npx react-native run-android
     bash
