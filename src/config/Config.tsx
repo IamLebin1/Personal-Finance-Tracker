@@ -1,3 +1,3 @@
 export const settings = {
-  serverPath: 'http://192.168.100.7:5000',
+  serverPath: 'http://182.62.176.187:5000',
 };

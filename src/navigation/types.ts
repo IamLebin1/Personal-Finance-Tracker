@@ -1,3 +1,5 @@
+import type { NavigatorScreenParams } from '@react-navigation/native';
+
 export type AuthStackParamList = {
   Login:
     | {
@@ -16,8 +18,8 @@ export type TransactionsStackParamList = {
 };
 
 export type MainTabParamList = {
-  TransactionsStack: undefined;
+  TransactionsStack: NavigatorScreenParams<TransactionsStackParamList> | undefined;
+  History: undefined;
   Accounts: undefined;
-  AddTransaction: undefined;
   Analytics: undefined;
 };

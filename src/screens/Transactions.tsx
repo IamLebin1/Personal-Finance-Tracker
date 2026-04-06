@@ -248,71 +248,6 @@ const TransactionsScreen = ({ navigation }: Props) => {
           </View>
         }
       />
-
-      <View
-        style={styles.bottomNavWrap}
-        pointerEvents="box-none">
-        <View style={styles.bottomNav}>
-          {[
-            {
-              label: 'Home',
-              icon: 'home',
-              activeIcon: 'home',
-              action: () => navigation.navigate('TransactionsStack' as never),
-              active: true,
-            },
-            {
-              label: 'History',
-              icon: 'time-outline',
-              activeIcon: 'time',
-              action: () => navigation.navigate('TransactionsStack' as never),
-            },
-            {
-              label: '',
-              icon: 'add',
-              activeIcon: 'add',
-              action: () => openEditor(),
-              fab: true,
-            },
-            {
-              label: 'Analytics',
-              icon: 'analytics-outline',
-              activeIcon: 'analytics',
-              action: () => navigation.navigate('Analytics' as never),
-            },
-            {
-              label: 'Profile',
-              icon: 'person-outline',
-              activeIcon: 'person',
-              action: () => navigation.navigate('Accounts' as never),
-            },
-          ].map(item => {
-            if (item.fab) {
-              return (
-                <View key="fab" style={styles.fabSlot}>
-                  <Pressable style={styles.fabButton} onPress={item.action}>
-                    <Ionicons name="add" size={32} color="#FFFFFF" />
-                  </Pressable>
-                </View>
-              );
-            }
-
-            const active = item.active;
-
-            return (
-              <Pressable key={item.label} style={styles.tabItem} onPress={item.action}>
-                <Ionicons
-                  name={(active ? item.activeIcon : item.icon) as any}
-                  size={24}
-                  color={active ? '#A78BFA' : '#64748B'}
-                />
-                <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{item.label}</Text>
-                {active ? <View style={styles.tabIndicator} /> : null}
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
     </SafeAreaView>
   );
 };
@@ -343,7 +278,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 20,
     paddingTop: 10,
-    paddingBottom: 120,
+    paddingBottom: 140,
   },
   headerRow: {
     flexDirection: 'row',
@@ -599,70 +534,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 20,
-  },
-  bottomNavWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingBottom: 16,
-    paddingTop: 8,
-    backgroundColor: 'rgba(19,18,33,0.86)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.05)',
-  },
-  bottomNav: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    position: 'relative',
-  },
-  tabItem: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
-  tabLabel: {
-    color: '#64748B',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  tabLabelActive: {
-    color: '#A78BFA',
-  },
-  tabIndicator: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#A78BFA',
-    marginTop: 2,
-    shadowColor: '#A78BFA',
-    shadowOpacity: 0.5,
-    shadowRadius: 6,
-  },
-  fabSlot: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: -24,
-  },
-  fabButton: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: '#251dc9',
-    borderWidth: 4,
-    borderColor: '#131221',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#7c3aed',
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    elevation: 6,
   },
 });
 
