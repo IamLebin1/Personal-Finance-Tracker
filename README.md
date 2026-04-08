@@ -88,6 +88,87 @@ Run iOS:
 npm run ios
 ```
 
+## Run Backend Demo (db folder)
+
+Use two terminals from the project root.
+
+1. Initialize and seed the database:
+
+```bash
+cd db
+node service.js
+```
+
+2. Start the backend API server:
+
+```bash
+cd db
+node tracker.js
+```
+
+3. Test in browser or API client:
+
+```text
+http://localhost:5000/api/transactions
+```
+
+Expected response (pretty print):
+
+```json
+[
+    {
+        "id": "seed-2",
+        "amount": 84.2,
+        "type": "expense",
+        "category": "groceries",
+        "date": "2026-04-04T11:45:00Z",
+        "note": "Weekend grocery run",
+        "receiptUrl": "",
+        "userId": "demo-user"
+    },
+    {
+        "id": "seed-1",
+        "amount": 4200,
+        "type": "income",
+        "category": "salary",
+        "date": "2026-04-04T08:30:00Z",
+        "note": "Monthly salary",
+        "receiptUrl": "",
+        "userId": "demo-user"
+    },
+    {
+        "id": "seed-3",
+        "amount": 14.9,
+        "type": "expense",
+        "category": "transport",
+        "date": "2026-04-03T15:15:00Z",
+        "note": "Grab ride",
+        "receiptUrl": "",
+        "userId": "demo-user"
+    },
+    {
+        "id": "seed-4",
+        "amount": 120,
+        "type": "expense",
+        "category": "utilities",
+        "date": "2026-04-02T09:00:00Z",
+        "note": "Water bill",
+        "receiptUrl": "",
+        "userId": "demo-user"
+    },
+    {
+        "id": "seed-5",
+        "amount": 250,
+        "type": "income",
+        "category": "freelance",
+        "date": "2026-04-01T19:00:00Z",
+        "note": "Side project payment",
+        "receiptUrl": "",
+        "userId": "demo-user"
+    }
+]
+```
+
 ## Notes
 
 - This repository is primarily a React Native mobile app.
