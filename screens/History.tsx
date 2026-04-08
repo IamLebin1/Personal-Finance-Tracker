@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#090a1f',
   },
   content: {
-    paddingTop: 12,
+    paddingTop: 50,
     paddingHorizontal: 16,
     paddingBottom: 110,
   },

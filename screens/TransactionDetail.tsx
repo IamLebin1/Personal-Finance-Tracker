@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0b0d22',
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 50,
   },
   label: {
     color: '#aeb5e0',

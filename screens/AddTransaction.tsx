@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#0b0d22',
-    paddingTop: 14,
+    paddingTop: 50,
     paddingHorizontal: 16,
   },
   burstCircle: {
