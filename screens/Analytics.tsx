@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { getSpendingByCategory, getSpendingByDate, getWeeklySpending, formatCurrency, type CategorySpending, type DaySpending } from '../services/transactionService';
+import { getAuthSession } from '../services/authSession';
 
 const CATEGORY_COLORS = ['#3554ff', '#7849ff', '#ff4a7f', '#ffb359', '#00d4aa', '#ff6b9d', '#a78bfa', '#60a5fa'];
 
@@ -18,9 +19,14 @@ export default function Analytics() {
   const loadAnalytics = async () => {
     try {
       setLoading(true);
-      // Use a default user ID - in a real app, this would come from auth context
-      const userId = 'demo-user';
-      
+      const userId = getAuthSession()?.userId || '';
+      if (!userId) {
+        setWeeklySpending(0);
+        setCategorySpending([]);
+        setDaySpending([]);
+        return;
+      }
+
       const [weekly, categories, dayData] = await Promise.all([
         getWeeklySpending(userId),
         getSpendingByCategory(userId),

@@ -1,9 +1,8 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RootStackNavigator from './navigation/RootStackNavigator';
-import { initDatabase } from './db/sqlite';
 
 const financeDarkTheme = {
   ...DarkTheme,
@@ -19,10 +18,6 @@ const financeDarkTheme = {
 };
 
 function App() {
-  useEffect(() => {
-    void initDatabase();
-  }, []);
-
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="light-content" backgroundColor="#090a1f" />

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { deleteTransaction, updateTransaction } from '../db/sqlite';
+import { deleteTransaction, updateTransaction } from '../services/transactionApi';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TransactionDetail'>;
@@ -42,7 +42,7 @@ export default function TransactionDetail({ route, navigation }: Props) {
         note: note.trim(),
         category,
         type,
-      });
+      }, transaction);
       navigation.goBack();
     } catch {
       Alert.alert('Update failed', 'Could not update transaction. Please try again.');

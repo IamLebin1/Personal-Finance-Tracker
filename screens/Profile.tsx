@@ -1,6 +1,8 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { config } from '../config/appConfig';
+import { clearAuthSession, getAuthSession } from '../services/authSession';
 
 const settingsRows = [
   { icon: '👤', title: 'Personal Details', subtitle: 'Name, Email, Phone' },
@@ -11,6 +13,28 @@ const settingsRows = [
 
 export default function Profile() {
   const navigation = useNavigation();
+  const session = getAuthSession();
+
+  const handleSignOut = () => {
+    const currentSession = getAuthSession();
+
+    if (currentSession?.token) {
+      void fetch(`${config.apiBaseUrl}/api/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentSession.token}`,
+        },
+      }).catch(() => {
+        // Keep sign out resilient even if network is unavailable.
+      });
+    }
+
+    clearAuthSession();
+    navigation.navigate('Login' as never);
+  };
+
+  const displayName = session?.username || 'User';
 
   return (
     <View style={styles.screen}>
@@ -21,10 +45,10 @@ export default function Profile() {
           <View style={styles.avatarWrap}>
             <Text style={styles.avatar}>🧑🏻</Text>
           </View>
-          <Text style={styles.name}>Alex Chen</Text>
-          <Text style={styles.email}>alex.chen@example.com</Text>
+          <Text style={styles.name}>{displayName}</Text>
+          <Text style={styles.email}>{session?.userId ? `User ID: ${session.userId}` : 'Not logged in'}</Text>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>Premium Member</Text>
+            <Text style={styles.badgeText}>Member</Text>
           </View>
         </View>
 
@@ -39,7 +63,7 @@ export default function Profile() {
           </View>
         ))}
 
-        <Pressable style={styles.signOutWrap} onPress={() => navigation.navigate('Login' as never)}>
+        <Pressable style={styles.signOutWrap} onPress={handleSignOut}>
           <Text style={styles.signOut}>Sign Out</Text>
         </Pressable>
       </ScrollView>

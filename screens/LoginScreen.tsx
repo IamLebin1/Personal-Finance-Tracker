@@ -13,6 +13,7 @@ import Svg, { Path } from 'react-native-svg';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { config } from '../config/appConfig';
+import { setAuthSession } from '../services/authSession';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
@@ -92,7 +93,21 @@ const LoginScreen = ({ navigation, route }: Props) => {
         }
         return responseJson;
       })
-      .then(() => {
+      .then(responseJson => {
+        const token = String(responseJson?.token || '');
+        const userId = String(responseJson?.user?.id || '');
+        const loggedInUsername = String(responseJson?.user?.username || trimmedUsername);
+
+        if (!token || !userId) {
+          throw new Error('Login response missing session data');
+        }
+
+        setAuthSession({
+          token,
+          userId,
+          username: loggedInUsername,
+        });
+
         Alert.alert('Success', 'Login successful.');
         setPassword('');
         if (!rememberMe) {

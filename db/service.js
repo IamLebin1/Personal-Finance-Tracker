@@ -42,6 +42,49 @@ function closeDb(db) {
   db.close();
 }
 
+function getBearerToken(req) {
+  const authHeader = req.headers.authorization || '';
+  const [scheme, token] = authHeader.split(' ');
+  if (scheme && scheme.toLowerCase() === 'bearer' && token) {
+    return token.trim();
+  }
+  return '';
+}
+
+function requireAuth(req, res, next) {
+  const token = getBearerToken(req);
+  if (!token) {
+    return res.status(401).json({ message: 'Missing auth token' });
+  }
+
+  const db = openDb();
+  db.get(
+    `SELECT sessions.userId, users.username
+     FROM sessions
+     JOIN users ON users.id = sessions.userId
+     WHERE sessions.token = ?`,
+    [token],
+    (err, row) => {
+      closeDb(db);
+
+      if (err) {
+        return res.status(500).json({ message: 'Database error' });
+      }
+
+      if (!row) {
+        return res.status(401).json({ message: 'Invalid or expired token' });
+      }
+
+      req.auth = {
+        token,
+        userId: String(row.userId),
+        username: row.username,
+      };
+      return next();
+    }
+  );
+}
+
 function ensureTables(onDone) {
   const db = openDb();
   db.serialize(() => {
@@ -242,7 +285,8 @@ app.post('/api/auth/login', (req, res) => {
 
 // Logout
 app.post('/api/auth/logout', (req, res) => {
-  const { token } = req.body || {};
+  const bodyToken = (req.body && req.body.token) ? String(req.body.token).trim() : '';
+  const token = bodyToken || getBearerToken(req);
 
   if (!token) {
     return res.status(400).json({ message: 'token is required' });
@@ -351,38 +395,41 @@ app.post('/api/auth/reset-password', (req, res) => {
 });
 
 // Transactions
-app.get('/api/transactions', (req, res) => {
-  const userId = (req.query.userId || 'demo-user').toString();
+app.get('/api/transactions', requireAuth, (req, res) => {
   const db = openDb();
 
   db.all(
     'SELECT * FROM transactions WHERE userId = ? ORDER BY date DESC',
-    [userId],
+    [req.auth.userId],
     (err, rows) => {
       closeDb(db);
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ message: 'Database error' });
       return res.status(200).json(rows);
     }
   );
 });
 
-app.get('/api/transactions/:id', (req, res) => {
+app.get('/api/transactions/:id', requireAuth, (req, res) => {
   const db = openDb();
 
-  db.get('SELECT * FROM transactions WHERE id = ?', [req.params.id], (err, row) => {
-    closeDb(db);
-    if (err) return res.status(500).json(err);
-    if (!row) return res.status(200).json(null);
-    return res.status(200).json(row);
-  });
+  db.get(
+    'SELECT * FROM transactions WHERE id = ? AND userId = ?',
+    [req.params.id, req.auth.userId],
+    (err, row) => {
+      closeDb(db);
+      if (err) return res.status(500).json({ message: 'Database error' });
+      if (!row) return res.status(404).json({ message: 'Transaction not found' });
+      return res.status(200).json(row);
+    }
+  );
 });
 
-app.post('/api/transactions', (req, res) => {
+app.post('/api/transactions', requireAuth, (req, res) => {
   if (!req.body) return res.sendStatus(400);
 
-  const { amount, type, category, date, note, receiptUrl, userId } = req.body;
-  if (!amount || !type || !category || !date || !userId) {
-    return res.status(400).json({ message: 'amount, type, category, date, userId are required' });
+  const { amount, type, category, date, note, receiptUrl } = req.body;
+  if (!amount || !type || !category || !date) {
+    return res.status(400).json({ message: 'amount, type, category, date are required' });
   }
 
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -391,16 +438,16 @@ app.post('/api/transactions', (req, res) => {
   db.run(
     `INSERT INTO transactions(id, amount, type, category, date, note, receiptUrl, userId)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, Number(amount), type, category, date, note || '', receiptUrl || '', userId],
+    [id, Number(amount), type, category, date, note || '', receiptUrl || '', req.auth.userId],
     function onInsert(err) {
       closeDb(db);
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ message: 'Database error' });
       return res.status(201).json({ id, affected: this.changes });
     }
   );
 });
 
-app.put('/api/transactions/:id', (req, res) => {
+app.put('/api/transactions/:id', requireAuth, (req, res) => {
   if (!req.body) return res.sendStatus(400);
 
   const { amount, type, category, date, note, receiptUrl } = req.body;
@@ -413,22 +460,32 @@ app.put('/api/transactions/:id', (req, res) => {
   db.run(
     `UPDATE transactions
      SET amount = ?, type = ?, category = ?, date = ?, note = ?, receiptUrl = ?
-     WHERE id = ?`,
-    [Number(amount), type, category, date, note || '', receiptUrl || '', req.params.id],
+     WHERE id = ? AND userId = ?`,
+    [Number(amount), type, category, date, note || '', receiptUrl || '', req.params.id, req.auth.userId],
     function onUpdate(err) {
       closeDb(db);
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ message: 'Database error' });
+      if (!this.changes) {
+        return res.status(404).json({ message: 'Transaction not found' });
+      }
       return res.status(200).json({ id: req.params.id, affected: this.changes });
     }
   );
 });
 
-app.delete('/api/transactions/:id', (req, res) => {
+app.delete('/api/transactions/:id', requireAuth, (req, res) => {
   const db = openDb();
 
-  db.run('DELETE FROM transactions WHERE id = ?', [req.params.id], function onDelete(err) {
-    closeDb(db);
-    if (err) return res.status(500).json(err);
-    return res.status(200).json({ id: req.params.id, affected: this.changes });
-  });
+  db.run(
+    'DELETE FROM transactions WHERE id = ? AND userId = ?',
+    [req.params.id, req.auth.userId],
+    function onDelete(err) {
+      closeDb(db);
+      if (err) return res.status(500).json({ message: 'Database error' });
+      if (!this.changes) {
+        return res.status(404).json({ message: 'Transaction not found' });
+      }
+      return res.status(200).json({ id: req.params.id, affected: this.changes });
+    }
+  );
 });

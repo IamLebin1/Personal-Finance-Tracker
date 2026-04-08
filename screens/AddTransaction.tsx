@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { insertTransaction } from '../db/sqlite';
-import { config } from '../config/appConfig';
+import { insertTransaction } from '../services/transactionApi';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
+import { getAuthSession } from '../services/authSession';
 
 const categories = [
   { key: 'food', label: 'Food' },
@@ -18,48 +18,22 @@ const categories = [
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddTransaction'>;
 const keypadRows = [
-  ['1', '2', '3', 'Del'],
-  ['4', '5', '6', 'C'],
-  ['7', '8', '9', '-'],
-  ['0', '00', '.', '+'],
+  ['1', '2', '3'],
+  ['4', '5', '6'],
+  ['7', '8', '9'],
+  ['0'],
 ];
 
-function evaluateExpression(expression: string): number {
-  if (!expression.trim()) {
-    return 0;
+function formatSafeAmount(digits: string): { display: string; value: number } {
+  if (!digits) {
+    return { display: '0.00', value: 0 };
   }
 
-  const sanitized = expression.replace(/\s+/g, '').replace(/[^0-9.+-]/g, '');
-  const trimmed = sanitized.replace(/[+-]+$/, '');
+  const padded = digits.padStart(3, '0');
+  const display = padded.slice(0, -2) + '.' + padded.slice(-2);
+  const value = parseFloat(display);
 
-  if (!trimmed) {
-    return 0;
-  }
-
-  const parts = trimmed.split(/([+-])/).filter(Boolean);
-  let total = Number(parts[0]);
-
-  if (Number.isNaN(total)) {
-    return 0;
-  }
-
-  for (let index = 1; index < parts.length; index += 2) {
-    const operator = parts[index];
-    const rawValue = parts[index + 1] ?? '0';
-    const value = Number(rawValue);
-
-    if (Number.isNaN(value)) {
-      continue;
-    }
-
-    if (operator === '+') {
-      total += value;
-    } else {
-      total -= value;
-    }
-  }
-
-  return total;
+  return { display, value };
 }
 
 export default function AddTransaction({ navigation, route }: Props) {
@@ -122,7 +96,7 @@ export default function AddTransaction({ navigation, route }: Props) {
     ]).start();
   }, [burstOpacity, burstScale, contentOpacity, contentScale, fromFab, spreadScaleTarget]);
 
-  const parsedAmount = useMemo(() => evaluateExpression(amount), [amount]);
+  const { display: displayAmount, value: parsedAmount } = useMemo(() => formatSafeAmount(amount), [amount]);
 
   const onKeypadTap = (key: string) => {
     if (!key) {
@@ -139,53 +113,27 @@ export default function AddTransaction({ navigation, route }: Props) {
       return;
     }
 
-    if (key === '+' || key === '-') {
+    if (/^\d$/.test(key)) {
       setAmount(prev => {
-        if (!prev) {
+        const next = prev + key;
+        if (next.length > 10) {
           return prev;
         }
-
-        if (/[+-]$/.test(prev)) {
-          return `${prev.slice(0, -1)}${key}`;
-        }
-
-        return `${prev}${key}`;
+        return next;
       });
       return;
     }
-
-    if (key === '.') {
-      setAmount(prev => {
-        const currentSegment = prev.split(/[+-]/).pop() ?? '';
-        if (currentSegment.includes('.')) {
-          return prev;
-        }
-        if (!prev) {
-          return '0.';
-        }
-        return `${prev}.`;
-      });
-      return;
-    }
-
-    setAmount(prev => {
-      const next = `${prev}${key}`;
-      if (!prev && key === '00') {
-        return '0';
-      }
-      if (prev === '0' && key !== '00' && key !== '.') {
-        return key;
-      }
-      if (next.length > 18) {
-        return prev;
-      }
-      return next;
-    });
   };
 
   const onSave = async () => {
-    if (!amount.trim() || /[+-]$/.test(amount) || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+    if (!amount.trim() || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       Alert.alert('Invalid amount', 'Please enter a valid amount greater than 0.');
+      return;
+    }
+
+    const session = getAuthSession();
+    if (!session?.userId) {
+      Alert.alert('Login required', 'Please sign in again before creating a transaction.');
       return;
     }
 
@@ -198,7 +146,7 @@ export default function AddTransaction({ navigation, route }: Props) {
         date: new Date().toISOString(),
         note: note.trim(),
         receiptUrl: '',
-        userId: config.demoUserId,
+        userId: session.userId,
       });
 
       navigation.goBack();
@@ -255,7 +203,7 @@ export default function AddTransaction({ navigation, route }: Props) {
         <View style={styles.amountWrap}>
         <Text style={styles.currency}>$</Text>
         <TextInput
-          value={amount || '0.00'}
+          value={displayAmount}
           placeholder="0.00"
           placeholderTextColor="#737aa8"
           editable={false}
@@ -292,25 +240,17 @@ export default function AddTransaction({ navigation, route }: Props) {
 
         <View style={styles.keypadWrap}>
         {keypadRows.flat().map((key, index) => {
-          if (!key) {
-            return <View key={`blank-${index}`} style={styles.keypadButton} />;
-          }
-
           return (
             <Pressable
               key={key}
               style={[
                 styles.keypadButton,
-                key === '+' || key === '-' ? styles.keypadTypeButton : null,
-                key === 'C' ? styles.keypadWarnButton : null,
               ]}
               onPress={() => onKeypadTap(key)}
             >
               <Text
                 style={[
                   styles.keypadButtonText,
-                  key === '+' || key === '-' ? styles.keypadTypeButtonText : null,
-                  key === 'C' ? styles.keypadWarnButtonText : null,
                 ]}
               >
                 {key}
@@ -318,6 +258,18 @@ export default function AddTransaction({ navigation, route }: Props) {
             </Pressable>
           );
         })}
+        <Pressable
+          style={[styles.keypadButton, styles.keypadWarnButton]}
+          onPress={() => onKeypadTap('Del')}
+        >
+          <Text style={[styles.keypadButtonText, styles.keypadWarnButtonText]}>Del</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.keypadButton, styles.keypadWarnButton]}
+          onPress={() => onKeypadTap('C')}
+        >
+          <Text style={[styles.keypadButtonText, styles.keypadWarnButtonText]}>C</Text>
+        </Pressable>
         </View>
 
         <Pressable style={[styles.saveButton, isSaving ? styles.saveButtonDisabled : null]} onPress={onSave} disabled={isSaving}>

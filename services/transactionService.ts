@@ -1,5 +1,5 @@
 import type { Transaction } from '../types/transaction';
-import { getTransactionsByUser } from '../db/sqlite';
+import { getTransactionsByUser } from './transactionApi';
 
 export interface DashboardSummary {
   totalBalance: number;
@@ -18,8 +18,8 @@ export interface DaySpending {
   amount: number;
 }
 
-export async function getDashboardSummary(userId: string): Promise<DashboardSummary> {
-  const all = await getTransactionsByUser(userId);
+export async function getDashboardSummary(_userId?: string): Promise<DashboardSummary> {
+  const all = await getTransactionsByUser();
 
   const totalBalance = all.reduce((acc, tx) => {
     return tx.type === 'income' ? acc + tx.amount : acc - tx.amount;
@@ -33,8 +33,8 @@ export async function getDashboardSummary(userId: string): Promise<DashboardSumm
   };
 }
 
-export async function getSpendingByCategory(userId: string): Promise<CategorySpending[]> {
-  const transactions = await getTransactionsByUser(userId);
+export async function getSpendingByCategory(_userId?: string): Promise<CategorySpending[]> {
+  const transactions = await getTransactionsByUser();
   const expenses = transactions.filter(tx => tx.type === 'expense');
   
   const categoryMap = new Map<string, number>();
@@ -55,8 +55,8 @@ export async function getSpendingByCategory(userId: string): Promise<CategorySpe
   return result.sort((a, b) => b.amount - a.amount);
 }
 
-export async function getSpendingByDate(userId: string, monthDate?: Date): Promise<DaySpending[]> {
-  const transactions = await getTransactionsByUser(userId);
+export async function getSpendingByDate(_userId?: string, monthDate?: Date): Promise<DaySpending[]> {
+  const transactions = await getTransactionsByUser();
   const expenses = transactions.filter(tx => tx.type === 'expense');
   
   const targetDate = monthDate || new Date();
@@ -83,8 +83,8 @@ export async function getSpendingByDate(userId: string, monthDate?: Date): Promi
   return result.sort((a, b) => a.day - b.day);
 }
 
-export async function getWeeklySpending(userId: string): Promise<number> {
-  const transactions = await getTransactionsByUser(userId);
+export async function getWeeklySpending(_userId?: string): Promise<number> {
+  const transactions = await getTransactionsByUser();
   const expenses = transactions.filter(tx => tx.type === 'expense');
   
   const now = new Date();
@@ -95,8 +95,8 @@ export async function getWeeklySpending(userId: string): Promise<number> {
     .reduce((sum, tx) => sum + tx.amount, 0);
 }
 
-export async function getMonthlySpendingTrend(userId: string, monthDate?: Date): Promise<number> {
-  const transactions = await getTransactionsByUser(userId);
+export async function getMonthlySpendingTrend(_userId?: string, monthDate?: Date): Promise<number> {
+  const transactions = await getTransactionsByUser();
   const expenses = transactions.filter(tx => tx.type === 'expense');
   
   const targetDate = monthDate || new Date();
