@@ -42,7 +42,7 @@ function closeDb(db) {
   db.close();
 }
 
-function ensureTables(onDone) {
+function ensureTables() {
   const db = openDb();
   db.serialize(() => {
     db.run('PRAGMA foreign_keys = ON');
@@ -75,25 +75,6 @@ function ensureTables(onDone) {
       )
     `);
 
-    // Transaction table
-    db.run(`
-      CREATE TABLE IF NOT EXISTS transactions (
-        id TEXT PRIMARY KEY NOT NULL,
-        amount REAL NOT NULL,
-        type TEXT NOT NULL,
-        category TEXT NOT NULL,
-        date TEXT NOT NULL,
-        note TEXT,
-        receiptUrl TEXT,
-        userId TEXT NOT NULL
-      )
-    `);
-
-    db.run(`
-      CREATE INDEX IF NOT EXISTS idx_transactions_user_date
-      ON transactions(userId, date DESC)
-    `);
-
     // Seed demo auth user
     db.get('SELECT COUNT(*) AS total FROM users', [], (err, row) => {
       if (!err && row && row.total === 0) {
@@ -108,65 +89,11 @@ function ensureTables(onDone) {
       }
 
       closeDb(db);
-      if (typeof onDone === 'function') {
-        onDone();
-      }
     });
   });
 }
 
-function seedTransactions(onDone) {
-  const db = openDb();
-  db.get('SELECT COUNT(*) AS total FROM transactions', [], (err, row) => {
-    if (err) {
-      console.error(err.message);
-      closeDb(db);
-      if (typeof onDone === 'function') {
-        onDone();
-      }
-      return;
-    }
-
-    if (row && row.total > 0) {
-      closeDb(db);
-      if (typeof onDone === 'function') {
-        onDone();
-      }
-      return;
-    }
-
-    const stmt = db.prepare(`
-      INSERT INTO transactions(id, amount, type, category, date, note, receiptUrl, userId)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run('seed-1', 4200, 'income', 'salary', '2026-04-04T08:30:00Z', 'Monthly salary', '', 'demo-user');
-    stmt.run('seed-2', 84.2, 'expense', 'groceries', '2026-04-04T11:45:00Z', 'Weekend grocery run', '', 'demo-user');
-    stmt.run('seed-3', 14.9, 'expense', 'transport', '2026-04-03T15:15:00Z', 'Grab ride', '', 'demo-user');
-    stmt.run('seed-4', 120.0, 'expense', 'utilities', '2026-04-02T09:00:00Z', 'Water bill', '', 'demo-user');
-    stmt.run('seed-5', 250.0, 'income', 'freelance', '2026-04-01T19:00:00Z', 'Side project payment', '', 'demo-user');
-
-    stmt.finalize(() => {
-      closeDb(db);
-      if (typeof onDone === 'function') {
-        onDone();
-      }
-    });
-  });
-}
-
-function startServer() {
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-}
-
-ensureTables(() => {
-  seedTransactions(() => {
-    startServer();
-  });
-});
+ensureTables();
 
 // Register
 app.post('/api/auth/register', (req, res) => {
@@ -292,6 +219,7 @@ app.post('/api/auth/forgot-password', (req, res) => {
             return res.status(500).json({ message: 'Database error' });
           }
 
+          // Simple demo flow: return token so it can be used in reset-password.
           return res.status(200).json({
             message: 'Reset token created',
             resetToken: token,
@@ -350,85 +278,7 @@ app.post('/api/auth/reset-password', (req, res) => {
   );
 });
 
-// Transactions
-app.get('/api/transactions', (req, res) => {
-  const userId = (req.query.userId || 'demo-user').toString();
-  const db = openDb();
-
-  db.all(
-    'SELECT * FROM transactions WHERE userId = ? ORDER BY date DESC',
-    [userId],
-    (err, rows) => {
-      closeDb(db);
-      if (err) return res.status(500).json(err);
-      return res.status(200).json(rows);
-    }
-  );
-});
-
-app.get('/api/transactions/:id', (req, res) => {
-  const db = openDb();
-
-  db.get('SELECT * FROM transactions WHERE id = ?', [req.params.id], (err, row) => {
-    closeDb(db);
-    if (err) return res.status(500).json(err);
-    if (!row) return res.status(200).json(null);
-    return res.status(200).json(row);
-  });
-});
-
-app.post('/api/transactions', (req, res) => {
-  if (!req.body) return res.sendStatus(400);
-
-  const { amount, type, category, date, note, receiptUrl, userId } = req.body;
-  if (!amount || !type || !category || !date || !userId) {
-    return res.status(400).json({ message: 'amount, type, category, date, userId are required' });
-  }
-
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const db = openDb();
-
-  db.run(
-    `INSERT INTO transactions(id, amount, type, category, date, note, receiptUrl, userId)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, Number(amount), type, category, date, note || '', receiptUrl || '', userId],
-    function onInsert(err) {
-      closeDb(db);
-      if (err) return res.status(500).json(err);
-      return res.status(201).json({ id, affected: this.changes });
-    }
-  );
-});
-
-app.put('/api/transactions/:id', (req, res) => {
-  if (!req.body) return res.sendStatus(400);
-
-  const { amount, type, category, date, note, receiptUrl } = req.body;
-  if (!amount || !type || !category || !date) {
-    return res.status(400).json({ message: 'amount, type, category, date are required' });
-  }
-
-  const db = openDb();
-
-  db.run(
-    `UPDATE transactions
-     SET amount = ?, type = ?, category = ?, date = ?, note = ?, receiptUrl = ?
-     WHERE id = ?`,
-    [Number(amount), type, category, date, note || '', receiptUrl || '', req.params.id],
-    function onUpdate(err) {
-      closeDb(db);
-      if (err) return res.status(500).json(err);
-      return res.status(200).json({ id: req.params.id, affected: this.changes });
-    }
-  );
-});
-
-app.delete('/api/transactions/:id', (req, res) => {
-  const db = openDb();
-
-  db.run('DELETE FROM transactions WHERE id = ?', [req.params.id], function onDelete(err) {
-    closeDb(db);
-    if (err) return res.status(500).json(err);
-    return res.status(200).json({ id: req.params.id, affected: this.changes });
-  });
+const PORT = process.env.PORT || 5001;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`User API running on port ${PORT}`);
 });

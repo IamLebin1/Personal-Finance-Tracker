@@ -90,23 +90,16 @@ npm run ios
 
 ## Run Backend Demo (db folder)
 
-Use two terminals from the project root.
+Use one terminal from the project root.
 
-1. Initialize and seed the database:
+1. Start the backend API server (schema + seed are created automatically):
 
 ```bash
 cd db
 node service.js
 ```
 
-2. Start the backend API server:
-
-```bash
-cd db
-node tracker.js
-```
-
-3. Test in browser or API client:
+2. Test in browser or API client:
 
 ```text
 http://localhost:5000/api/transactions
@@ -178,3 +171,35 @@ Expected response (pretty print):
 ## Troubleshooting
 
 If installation or native build steps fail, make sure your React Native environment is correctly configured for Android and iOS, and reinstall dependencies after updating native modules.
+
+### Register Fails (Login/Register Screen)
+
+If registration fails in the app, check these first:
+
+1. Backend server is running:
+
+```bash
+cd db
+node service.js
+```
+
+2. API URL is reachable from your device:
+- Android emulator: `http://10.0.2.2:5000`
+- iOS simulator: `http://localhost:5000`
+- Real phone: use your PC LAN IP, for example `http://192.168.1.10:5000`
+
+You can set it with environment variable:
+
+```env
+API_BASE_URL=http://192.168.1.10:5000
+```
+
+3. Username may already exist:
+- The API returns `username already exists` for duplicates.
+- Try a new username.
+
+4. Quick backend test for register:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://localhost:5000/api/auth/register" -ContentType "application/json" -Body (@{ username = "testuser_new"; password = "123456" } | ConvertTo-Json)
+```

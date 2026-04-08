@@ -1,5 +1,6 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
 const settingsRows = [
   { icon: '👤', title: 'Personal Details', subtitle: 'Name, Email, Phone' },
@@ -9,6 +10,8 @@ const settingsRows = [
 ];
 
 export default function Profile() {
+  const navigation = useNavigation();
+
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -36,9 +39,9 @@ export default function Profile() {
           </View>
         ))}
 
-        <View style={styles.signOutWrap}>
+        <Pressable style={styles.signOutWrap} onPress={() => navigation.navigate('Login' as never)}>
           <Text style={styles.signOut}>Sign Out</Text>
-        </View>
+        </Pressable>
       </ScrollView>
     </View>
   );
