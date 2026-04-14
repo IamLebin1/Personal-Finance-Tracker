@@ -42,6 +42,52 @@ function closeDb(db) {
   db.close();
 }
 
+function ensureTransactionColumns(db, onDone) {
+  db.all('PRAGMA table_info(transactions)', [], (err, rows) => {
+    if (err) {
+      console.error(err.message);
+      if (typeof onDone === 'function') {
+        onDone();
+      }
+      return;
+    }
+
+    const existingColumns = new Set((rows || []).map(column => column.name));
+    const alterStatements = [];
+
+    if (!existingColumns.has('note')) {
+      alterStatements.push('ALTER TABLE transactions ADD COLUMN note TEXT');
+    }
+    if (!existingColumns.has('receiptUrl')) {
+      alterStatements.push('ALTER TABLE transactions ADD COLUMN receiptUrl TEXT');
+    }
+    if (!existingColumns.has('userId')) {
+      alterStatements.push("ALTER TABLE transactions ADD COLUMN userId TEXT NOT NULL DEFAULT 'demo-user'");
+    }
+
+    if (alterStatements.length === 0) {
+      if (typeof onDone === 'function') {
+        onDone();
+      }
+      return;
+    }
+
+    let pending = alterStatements.length;
+    alterStatements.forEach(sql => {
+      db.run(sql, alterErr => {
+        if (alterErr) {
+          console.error(alterErr.message);
+        }
+
+        pending -= 1;
+        if (pending === 0 && typeof onDone === 'function') {
+          onDone();
+        }
+      });
+    });
+  });
+}
+
 function getBearerToken(req) {
   const authHeader = req.headers.authorization || '';
   const [scheme, token] = authHeader.split(' ');
@@ -137,23 +183,25 @@ function ensureTables(onDone) {
       ON transactions(userId, date DESC)
     `);
 
-    // Seed demo auth user
-    db.get('SELECT COUNT(*) AS total FROM users', [], (err, row) => {
-      if (!err && row && row.total === 0) {
-        db.run(
-          'INSERT INTO users(username, password, createdAt) VALUES (?, ?, ?)',
-          ['demo-user', hashPassword('demo123'), new Date().toISOString()]
-        );
-      }
+    ensureTransactionColumns(db, () => {
+      // Seed demo auth user
+      db.get('SELECT COUNT(*) AS total FROM users', [], (err, row) => {
+        if (!err && row && row.total === 0) {
+          db.run(
+            'INSERT INTO users(username, password, createdAt) VALUES (?, ?, ?)',
+            ['demo-user', hashPassword('demo123'), new Date().toISOString()]
+          );
+        }
 
-      if (err) {
-        console.error(err.message);
-      }
+        if (err) {
+          console.error(err.message);
+        }
 
-      closeDb(db);
-      if (typeof onDone === 'function') {
-        onDone();
-      }
+        closeDb(db);
+        if (typeof onDone === 'function') {
+          onDone();
+        }
+      });
     });
   });
 }
@@ -183,11 +231,46 @@ function seedTransactions(onDone) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    stmt.run('seed-1', 4200, 'income', 'salary', '2026-04-04T08:30:00Z', 'Monthly salary', '', 'demo-user');
-    stmt.run('seed-2', 84.2, 'expense', 'groceries', '2026-04-04T11:45:00Z', 'Weekend grocery run', '', 'demo-user');
-    stmt.run('seed-3', 14.9, 'expense', 'transport', '2026-04-03T15:15:00Z', 'Grab ride', '', 'demo-user');
-    stmt.run('seed-4', 120.0, 'expense', 'utilities', '2026-04-02T09:00:00Z', 'Water bill', '', 'demo-user');
-    stmt.run('seed-5', 250.0, 'income', 'freelance', '2026-04-01T19:00:00Z', 'Side project payment', '', 'demo-user');
+    stmt.run(
+      'seed-1', 4200, 'income', 'salary', '2026-04-04T08:30:00Z', 'Monthly salary', '', 'demo-user',
+      seedErr => {
+        if (seedErr) {
+          console.error(seedErr.message);
+        }
+      }
+    );
+    stmt.run(
+      'seed-2', 84.2, 'expense', 'groceries', '2026-04-04T11:45:00Z', 'Weekend grocery run', '', 'demo-user',
+      seedErr => {
+        if (seedErr) {
+          console.error(seedErr.message);
+        }
+      }
+    );
+    stmt.run(
+      'seed-3', 14.9, 'expense', 'transport', '2026-04-03T15:15:00Z', 'Grab ride', '', 'demo-user',
+      seedErr => {
+        if (seedErr) {
+          console.error(seedErr.message);
+        }
+      }
+    );
+    stmt.run(
+      'seed-4', 120.0, 'expense', 'utilities', '2026-04-02T09:00:00Z', 'Water bill', '', 'demo-user',
+      seedErr => {
+        if (seedErr) {
+          console.error(seedErr.message);
+        }
+      }
+    );
+    stmt.run(
+      'seed-5', 250.0, 'income', 'freelance', '2026-04-01T19:00:00Z', 'Side project payment', '', 'demo-user',
+      seedErr => {
+        if (seedErr) {
+          console.error(seedErr.message);
+        }
+      }
+    );
 
     stmt.finalize(() => {
       closeDb(db);
