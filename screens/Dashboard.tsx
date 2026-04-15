@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { getAuthSession } from '../services/authSession';
 import { getTransactionsByUser } from '../services/transactionApi';
 import { formatCurrency } from '../services/transactionService';
 import type { Transaction } from '../types/transaction';
@@ -54,6 +55,62 @@ function calculateMonthOverMonthTrend(transactions: Transaction[]): number {
 function formatTrendPercent(value: number): string {
   const sign = value > 0 ? '+' : '';
   return `${sign}${value.toFixed(1)}%`;
+}
+
+function calculateTypeMonthOverMonthTrend(
+  transactions: Transaction[],
+  type: Transaction['type'],
+): number {
+  const now = new Date();
+  const currentMonthDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  const previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const currentKey = getMonthKey(currentMonthDate);
+  const previousKey = getMonthKey(previousMonthDate);
+
+  let currentMonthTotal = 0;
+  let previousMonthTotal = 0;
+
+  transactions.forEach(item => {
+    if (item.type !== type) {
+      return;
+    }
+
+    const itemDate = new Date(item.date);
+    if (Number.isNaN(itemDate.getTime())) {
+      return;
+    }
+
+    const itemMonthKey = getMonthKey(itemDate);
+
+    if (itemMonthKey === currentKey) {
+      currentMonthTotal += item.amount;
+    } else if (itemMonthKey === previousKey) {
+      previousMonthTotal += item.amount;
+    }
+  });
+
+  if (previousMonthTotal === 0) {
+    if (currentMonthTotal === 0) {
+      return 0;
+    }
+
+    return 100;
+  }
+
+  return ((currentMonthTotal - previousMonthTotal) / Math.abs(previousMonthTotal)) * 100;
+}
+
+function getDaytimeGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) {
+    return 'Good Morning';
+  }
+
+  if (hour < 18) {
+    return 'Good Afternoon';
+  }
+
+  return 'Good Evening';
 }
 
 function buildSmoothPath(values: number[], width: number, height: number, padding = 3): string {
@@ -139,9 +196,14 @@ type DashboardProps = {
 };
 
 export default function Dashboard({ navigation }: DashboardProps) {
+  const session = getAuthSession();
+  const displayName = session?.username?.trim() || 'User';
+  const profileInitial = displayName.charAt(0).toUpperCase();
   const [totalBalance, setTotalBalance] = useState(0);
   const [incomeTotal, setIncomeTotal] = useState(0);
   const [expenseTotal, setExpenseTotal] = useState(0);
+  const [incomeTrend, setIncomeTrend] = useState(0);
+  const [expenseTrend, setExpenseTrend] = useState(0);
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [sparklineValues, setSparklineValues] = useState<number[]>([]);
   const [monthTrend, setMonthTrend] = useState(0);
@@ -173,6 +235,8 @@ export default function Dashboard({ navigation }: DashboardProps) {
           setRecentTransactions(allTransactions.slice(0, 4));
           setSparklineValues(allTransactions.slice(0, 8).reverse().map(item => toSignedAmount(item)));
           setMonthTrend(calculateMonthOverMonthTrend(allTransactions));
+          setIncomeTrend(calculateTypeMonthOverMonthTrend(allTransactions, 'income'));
+          setExpenseTrend(calculateTypeMonthOverMonthTrend(allTransactions, 'expense'));
         } catch {
           if (isMounted) {
             setRecentTransactions([]);
@@ -199,10 +263,10 @@ export default function Dashboard({ navigation }: DashboardProps) {
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.smallMuted}>Welcome back,</Text>
-            <Text style={styles.greeting}>Good Morning, Alex</Text>
+            <Text style={styles.greeting}>{getDaytimeGreeting()}, {displayName}</Text>
           </View>
-          <View style={styles.bellWrap}>
-            <Text style={styles.bellText}>!</Text>
+          <View style={styles.avatarWrap}>
+            <Text style={styles.avatarText}>{profileInitial}</Text>
           </View>
         </View>
 
@@ -251,7 +315,14 @@ export default function Dashboard({ navigation }: DashboardProps) {
             </View>
             <Text style={styles.statLabel}>Income</Text>
             <Text style={styles.statValue}>{formatCurrency(incomeTotal)}</Text>
-            <Text style={styles.statGrowthPositive}>+12%</Text>
+            <Text
+              style={[
+                styles.statGrowth,
+                incomeTrend > 0 ? styles.statGrowthPositive : incomeTrend < 0 ? styles.statGrowthNegative : styles.statGrowthNeutral,
+              ]}
+            >
+              {formatTrendPercent(incomeTrend)}
+            </Text>
           </View>
           <View style={styles.statCard}>
             <View style={[styles.statIconWrap, styles.expenseIconWrap]}>
@@ -259,7 +330,14 @@ export default function Dashboard({ navigation }: DashboardProps) {
             </View>
             <Text style={styles.statLabel}>Expenses</Text>
             <Text style={styles.statValue}>{formatCurrency(expenseTotal)}</Text>
-            <Text style={styles.statGrowthNegative}>-5%</Text>
+            <Text
+              style={[
+                styles.statGrowth,
+                expenseTrend > 0 ? styles.statGrowthNegative : expenseTrend < 0 ? styles.statGrowthPositive : styles.statGrowthNeutral,
+              ]}
+            >
+              {formatTrendPercent(expenseTrend)}
+            </Text>
           </View>
         </View>
 
@@ -308,7 +386,7 @@ export default function Dashboard({ navigation }: DashboardProps) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#050507',
+    backgroundColor: '#090a1f',
   },
   content: {
     paddingHorizontal: 16,
@@ -321,19 +399,19 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 12,
   },
-  bellWrap: {
+  avatarWrap: {
     marginTop: 8,
     width: 30,
     height: 30,
     borderRadius: 15,
     borderWidth: 1,
-    borderColor: '#2b2d35',
-    backgroundColor: '#171920',
+    borderColor: '#6d56ff',
+    backgroundColor: '#24274f',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  bellText: {
-    color: '#ff5f7a',
+  avatarText: {
+    color: '#f5f7ff',
     fontSize: 12,
     fontWeight: '700',
   },
@@ -492,15 +570,18 @@ const styles = StyleSheet.create({
     fontSize: 33,
     marginBottom: 3,
   },
-  statGrowthPositive: {
-    color: '#1dc98b',
+  statGrowth: {
     fontWeight: '700',
     fontSize: 10,
   },
+  statGrowthPositive: {
+    color: '#1dc98b',
+  },
   statGrowthNegative: {
     color: '#ff6e95',
-    fontWeight: '700',
-    fontSize: 10,
+  },
+  statGrowthNeutral: {
+    color: '#a1a8d6',
   },
   recentHead: {
     flexDirection: 'row',
