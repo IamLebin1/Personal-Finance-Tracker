@@ -1,16 +1,76 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import type { Transaction } from '../types/transaction';
+import { getTransactionsByUser } from '../services/transactionApi';
+import { formatCurrency } from '../services/transactionService';
 
-const historyItems = [
-  { id: '1', title: 'Whole Foods Market', subtitle: 'Groceries • 10:42 AM', amount: '-$124.50', tone: 'expense' },
-  { id: '2', title: 'Uber Trip', subtitle: 'Transport • 8:15 AM', amount: '-$14.20', tone: 'expense' },
-  { id: '3', title: 'Freelance Payment', subtitle: 'Income • 07:00 AM', amount: '+$850.00', tone: 'income' },
-  { id: '4', title: 'Netflix Subscription', subtitle: 'Entertainment • Monthly', amount: '-$15.99', tone: 'expense' },
-  { id: '5', title: 'Starbucks Coffee', subtitle: 'Food & Drink • 09:30 AM', amount: '-$6.50', tone: 'expense' },
-  { id: '6', title: 'Gym Membership', subtitle: 'Health • Recurring', amount: '-$45.00', tone: 'expense' },
-];
+function formatCategoryLabel(category: string): string {
+  return category
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function formatTransactionDate(dateValue: string): string {
+  const parsedDate = new Date(dateValue);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return dateValue;
+  }
+
+  const now = new Date();
+  const isToday =
+    parsedDate.getFullYear() === now.getFullYear() &&
+    parsedDate.getMonth() === now.getMonth() &&
+    parsedDate.getDate() === now.getDate();
+
+  const prefix = isToday
+    ? 'Today'
+    : parsedDate.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
+
+  const time = parsedDate.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  return `${prefix} • ${time}`;
+}
 
 export default function History() {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+
+      const loadTransactions = async () => {
+        try {
+          const rows = await getTransactionsByUser();
+          if (isMounted) {
+            setTransactions(rows);
+          }
+        } finally {
+          if (isMounted) {
+            setIsLoading(false);
+          }
+        }
+      };
+
+      setIsLoading(true);
+      void loadTransactions();
+
+      return () => {
+        isMounted = false;
+      };
+    }, []),
+  );
+
   return (
     <View style={styles.screen}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
@@ -32,20 +92,31 @@ export default function History() {
           </View>
         </View>
 
-        <Text style={styles.sectionLabel}>TODAY, 24 OCT</Text>
+        <Text style={styles.sectionLabel}>RECENT</Text>
 
-        {historyItems.map(item => (
-          <View key={item.id} style={styles.rowCard}>
-            <View style={styles.rowIconWrap}>
-              <Text style={styles.rowIcon}>{item.tone === 'income' ? '↑' : '•'}</Text>
+        {isLoading ? <ActivityIndicator color="#8f7bff" style={{ marginTop: 16 }} /> : null}
+
+        {!isLoading && transactions.length === 0 ? (
+          <Text style={styles.emptyText}>No transactions yet.</Text>
+        ) : null}
+
+        {transactions.map(item => {
+          const signedAmount = `${item.type === 'income' ? '+' : '-'}${formatCurrency(item.amount)}`;
+          return (
+            <View key={item.id} style={styles.rowCard}>
+              <View style={styles.rowIconWrap}>
+                <Text style={styles.rowIcon}>{item.type === 'income' ? '↑' : '•'}</Text>
+              </View>
+              <View style={styles.rowTextWrap}>
+                <Text style={styles.rowTitle}>{formatCategoryLabel(item.category)}</Text>
+                <Text style={styles.rowSubtitle}>{formatTransactionDate(item.date)}</Text>
+              </View>
+              <Text style={[styles.amount, item.type === 'income' ? styles.income : styles.expense]}>
+                {signedAmount}
+              </Text>
             </View>
-            <View style={styles.rowTextWrap}>
-              <Text style={styles.rowTitle}>{item.title}</Text>
-              <Text style={styles.rowSubtitle}>{item.subtitle}</Text>
-            </View>
-            <Text style={[styles.amount, item.tone === 'income' ? styles.income : styles.expense]}>{item.amount}</Text>
-          </View>
-        ))}
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -57,7 +128,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#090a1f',
   },
   content: {
-    paddingTop: 12,
+    paddingTop: 50,
     paddingHorizontal: 16,
     paddingBottom: 110,
   },
@@ -112,6 +183,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.6,
     marginBottom: 8,
+  },
+  emptyText: {
+    color: '#7f86c0',
+    textAlign: 'center',
+    marginTop: 14,
+    marginBottom: 12,
   },
   rowCard: {
     flexDirection: 'row',

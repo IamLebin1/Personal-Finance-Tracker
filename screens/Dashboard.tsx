@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { config } from '../config/appConfig';
-import { getTransactionsByUser, subscribeToTransactions } from '../db/sqlite';
+import { getTransactionsByUser } from '../services/transactionApi';
 import { formatCurrency } from '../services/transactionService';
 import type { Transaction } from '../types/transaction';
 
@@ -147,44 +147,51 @@ export default function Dashboard({ navigation }: DashboardProps) {
   const [monthTrend, setMonthTrend] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    let isMounted = true;
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
 
-    const refreshDashboard = async () => {
-      const allTransactions = await getTransactionsByUser(config.demoUserId);
+      const refreshDashboard = async () => {
+        try {
+          const allTransactions = await getTransactionsByUser();
 
-      const income = allTransactions
-        .filter(item => item.type === 'income')
-        .reduce((acc, item) => acc + item.amount, 0);
+          const income = allTransactions
+            .filter(item => item.type === 'income')
+            .reduce((acc, item) => acc + item.amount, 0);
 
-      const expenses = allTransactions
-        .filter(item => item.type === 'expense')
-        .reduce((acc, item) => acc + item.amount, 0);
+          const expenses = allTransactions
+            .filter(item => item.type === 'expense')
+            .reduce((acc, item) => acc + item.amount, 0);
 
-      if (!isMounted) {
-        return;
-      }
+          if (!isMounted) {
+            return;
+          }
 
-      setIncomeTotal(income);
-      setExpenseTotal(expenses);
-      setTotalBalance(income - expenses);
-      setRecentTransactions(allTransactions.slice(0, 4));
-      setSparklineValues(allTransactions.slice(0, 8).reverse().map(item => toSignedAmount(item)));
-      setMonthTrend(calculateMonthOverMonthTrend(allTransactions));
-      setIsLoading(false);
-    };
+          setIncomeTotal(income);
+          setExpenseTotal(expenses);
+          setTotalBalance(income - expenses);
+          setRecentTransactions(allTransactions.slice(0, 4));
+          setSparklineValues(allTransactions.slice(0, 8).reverse().map(item => toSignedAmount(item)));
+          setMonthTrend(calculateMonthOverMonthTrend(allTransactions));
+        } catch {
+          if (isMounted) {
+            setRecentTransactions([]);
+          }
+        } finally {
+          if (isMounted) {
+            setIsLoading(false);
+          }
+        }
+      };
 
-    const unsubscribe = subscribeToTransactions(() => {
+      setIsLoading(true);
       void refreshDashboard();
-    });
 
-    void refreshDashboard();
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
+      return () => {
+        isMounted = false;
+      };
+    }, []),
+  );
 
   return (
     <View style={styles.screen}>
@@ -305,7 +312,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 50,
     paddingBottom: 118,
   },
   headerRow: {

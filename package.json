@@ -15,16 +15,21 @@
     "@react-navigation/drawer": "^7.9.8",
     "@react-navigation/native": "^7.2.2",
     "@react-navigation/native-stack": "^7.14.10",
+    "body-parser": "^2.2.2",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "react": "19.2.3",
     "react-native": "0.84.1",
     "react-native-gesture-handler": "^2.31.0",
     "react-native-reanimated": "^4.3.0",
     "react-native-safe-area-context": "^5.5.2",
     "react-native-screens": "^4.24.0",
-    "react-native-sqlite-storage": "^6.0.1",
     "react-native-svg": "^15.15.4",
     "react-native-worklets": "^0.8.1",
-    "react-native-worklets-core": "^1.6.3"
+    "react-native-worklets-core": "^1.6.3",
+    "socket.io": "^4.8.3",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^6.0.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
