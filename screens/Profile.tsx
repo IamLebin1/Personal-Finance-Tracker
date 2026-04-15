@@ -35,6 +35,7 @@ export default function Profile() {
   };
 
   const displayName = session?.username || 'User';
+  const profileInitial = displayName.trim().charAt(0).toUpperCase() || 'U';
 
   return (
     <View style={styles.screen}>
@@ -43,7 +44,7 @@ export default function Profile() {
 
         <View style={styles.profileCard}>
           <View style={styles.avatarWrap}>
-            <Text style={styles.avatar}>🧑🏻</Text>
+            <Text style={styles.avatar}>{profileInitial}</Text>
           </View>
           <Text style={styles.name}>{displayName}</Text>
           <Text style={styles.email}>{session?.userId ? `User ID: ${session.userId}` : 'Not logged in'}</Text>
@@ -109,7 +110,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   avatar: {
-    fontSize: 46,
+    fontSize: 38,
+    fontWeight: '700',
+    color: '#f5f7ff',
   },
   name: {
     color: '#f5f7ff',
