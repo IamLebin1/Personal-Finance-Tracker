@@ -1,72 +1,66 @@
 # Personal Finance Tracker
 
-Personal Finance Tracker is a React Native mobile application for managing income, expenses, transaction history, and analytics for the UECS3253 Wireless Application Development course.
+Personal Finance Tracker is a React Native app for tracking income, expenses, history, and spending analytics.
 
-## Overview
+## Features
 
-The app provides:
-
-- Dashboard summaries for balances and recent activity
+- Dashboard with balance and recent transactions
 - Add, edit, and delete transactions
-- Transaction history with filtering and search
-- Analytics screens for spending trends and category breakdowns
-- Local persistence using SQLite
+- Transaction history with filters and search
+- Analytics for spending trends and categories
+- Local SQLite data storage
 
 ## Tech Stack
 
-- React Native
-- TypeScript
+- React Native + TypeScript
 - React Navigation
-- SQLite / `react-native-sqlite-storage`
-- SVG charts and custom UI components
+- SQLite
+- Express demo backend (optional)
 
 ## Project Structure
 
-- `App.tsx`: app entry point and navigation setup
-- `navigation/`: stack, drawer, and tab navigation
-- `screens/`: dashboard, analytics, history, profile, and transaction screens
-- `services/`: transaction and analytics helpers
-- `db/`: SQLite access layer
-- `types/`: shared TypeScript types
+- `App.tsx` - App entry and root navigation
+- `screens/` - Main app screens
+- `navigation/` - Stack, tab, and drawer navigators
+- `components/` - Reusable UI components
+- `services/` - App services and API helpers
+- `db/` - Optional Node.js backend demo
+- `config/` - Local app configuration
 
-## Setup
+## Prerequisites
 
-1. Clone the repository:
+- Node.js 22.11.0 or higher
+- React Native development environment (Android Studio / Xcode)
 
-    ```bash
-    git clone https://github.com/iamLebin1/Personal-Finance-Tracker.git
-    cd Personal-Finance-Tracker
-    ```
+## Quick Start
 
-2. Install the React Native app dependencies:
+1. Clone and enter the project:
 
-    ```bash
-    npm install --legacy-peer-deps
-    ```
+```bash
+git clone https://github.com/iamLebin1/Personal-Finance-Tracker.git
+cd Personal-Finance-Tracker
+```
 
-3. If you are setting up the optional Node.js backend / API layer, install the requested packages:
+2. Install dependencies:
 
-    ```bash
-    npm install sqlite
-    npm install sqlite3
-    npm install cors
-    npm install express body-parser cors
-    npm install express socket.io
-    ```
+```bash
+npm install --legacy-peer-deps
+```
 
-    If you want a cleaner install flow, the first four commands can be combined into one package install command, but the lines above are kept exactly as requested for project setup notes.
+3. Create your local app config (required):
 
-4. Create the local environment file if your setup uses one:
+```bash
+copy config\appConfig.example.ts config\appConfig.ts
+```
 
-    ```bash
-    copy .env.example .env
-    ```
+`config/appConfig.ts` is gitignored, so each developer must create their own local copy.
 
-5. Configure SQLite local settings if needed:
+4. Edit `config/appConfig.ts` for your environment:
 
-    - `APP_MODE=local`
-    - `SQLITE_DB_NAME=finance_tracker.sqlite`
-    - `SQLITE_SEED_DEMO=true`
+- `APP_MODE` (for example: `local`)
+- `SQLITE_DB_NAME` (for example: `finance_tracker.sqlite`)
+- `SQLITE_SEED_DEMO` (`true` or `false`)
+- `API_BASE_URL` (if using backend mode)
 
 ## Run the App
 
@@ -76,129 +70,69 @@ Start Metro:
 npm start
 ```
 
-Run Android:
+Run on Android:
 
 ```bash
 npm run android
 ```
 
-Run iOS:
+Run on iOS:
 
 ```bash
 npm run ios
 ```
 
-## Run Backend Demo (db folder)
+## Optional Backend Demo
 
-Use one terminal from the project root.
+If you want to run the demo API server in `db/service.js`:
 
-1. Start the backend API server (schema + seed are created automatically):
+1. Start backend:
 
 ```bash
 cd db
 node service.js
 ```
 
-2. Test in browser or API client:
+2. Test endpoint:
 
 ```text
 http://localhost:5000/api/transactions
 ```
 
-Expected response (pretty print):
+## API Base URL Guide
 
-```json
-[
-    {
-        "id": "seed-2",
-        "amount": 84.2,
-        "type": "expense",
-        "category": "groceries",
-        "date": "2026-04-04T11:45:00Z",
-        "note": "Weekend grocery run",
-        "receiptUrl": "",
-        "userId": "demo-user"
-    },
-    {
-        "id": "seed-1",
-        "amount": 4200,
-        "type": "income",
-        "category": "salary",
-        "date": "2026-04-04T08:30:00Z",
-        "note": "Monthly salary",
-        "receiptUrl": "",
-        "userId": "demo-user"
-    },
-    {
-        "id": "seed-3",
-        "amount": 14.9,
-        "type": "expense",
-        "category": "transport",
-        "date": "2026-04-03T15:15:00Z",
-        "note": "Grab ride",
-        "receiptUrl": "",
-        "userId": "demo-user"
-    },
-    {
-        "id": "seed-4",
-        "amount": 120,
-        "type": "expense",
-        "category": "utilities",
-        "date": "2026-04-02T09:00:00Z",
-        "note": "Water bill",
-        "receiptUrl": "",
-        "userId": "demo-user"
-    },
-    {
-        "id": "seed-5",
-        "amount": 250,
-        "type": "income",
-        "category": "freelance",
-        "date": "2026-04-01T19:00:00Z",
-        "note": "Side project payment",
-        "receiptUrl": "",
-        "userId": "demo-user"
-    }
-]
-```
+Use the correct URL for your device target:
 
-## Notes
-
-- This repository is primarily a React Native mobile app.
-- Packages like `express`, `cors`, `body-parser`, and `socket.io` are typically used for a separate backend service if you decide to extend the project.
-- The app uses local SQLite storage for transaction data and analytics.
+- Android emulator: `http://10.0.2.2:5000`
+- iOS simulator: `http://localhost:5000`
+- Real device: `http://<your-lan-ip>:5000` (example: `http://192.168.1.10:5000`)
 
 ## Troubleshooting
 
-If installation or native build steps fail, make sure your React Native environment is correctly configured for Android and iOS, and reinstall dependencies after updating native modules.
+### App does not build
 
-### Register Fails (Login/Register Screen)
+- Confirm React Native environment is fully set up
+- Reinstall dependencies if needed (remove `node_modules` manually, then run):
 
-If registration fails in the app, check these first:
+```bash
+npm install --legacy-peer-deps
+```
 
-1. Backend server is running:
+### Registration fails
+
+1. Confirm backend is running:
 
 ```bash
 cd db
 node service.js
+node user.js
 ```
 
-2. API URL is reachable from your device:
-- Android emulator: `http://10.0.2.2:5000`
-- iOS simulator: `http://localhost:5000`
-- Real phone: use your PC LAN IP, for example `http://192.168.1.10:5000`
+2. Confirm `API_BASE_URL` in `config/appConfig.ts` matches your device target.
 
-You can set it with environment variable:
+3. If username is duplicated, register with a different username.
 
-```env
-API_BASE_URL=http://192.168.1.10:5000
-```
-
-3. Username may already exist:
-- The API returns `username already exists` for duplicates.
-- Try a new username.
-
-4. Quick backend test for register:
+4. Optional quick register test:
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri "http://localhost:5000/api/auth/register" -ContentType "application/json" -Body (@{ username = "testuser_new"; password = "123456" } | ConvertTo-Json)
