@@ -8,6 +8,11 @@ const DB = path.join(__dirname, 'finance_tracker.sqlite');
 
 app.use(express.json());
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
 function openDb() {
   return new sqlite3.Database(DB);
 }
@@ -284,15 +289,33 @@ function seedTransactions(onDone) {
 
 function startServer() {
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Database: ${DB}`);
+    console.log('✓ Backend ready for connections');
+  });
+  
+  server.on('error', (err) => {
+    console.error('❌ Server error:', err.message);
   });
 }
 
+console.log('🚀 Starting backend...');
 ensureTables(() => {
+  console.log('✓ Database tables created');
   seedTransactions(() => {
+    console.log('✓ Database seeded');
     startServer();
   });
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('❌ Unhandled rejection:', err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught exception:', err);
+  process.exit(1);
 });
 
 // Register

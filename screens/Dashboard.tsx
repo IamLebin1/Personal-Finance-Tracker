@@ -1,11 +1,24 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import { 
+  ActivityIndicator, 
+  Pressable, 
+  ScrollView, 
+  StyleSheet, 
+  Text, 
+  View, 
+  Dimensions, 
+  Animated, 
+  StatusBar 
+} from 'react-native';
+import Svg, { Path, Defs, LinearGradient, Stop, Rect, Circle } from 'react-native-svg';
 import { getAuthSession } from '../services/authSession';
 import { getTransactionsByUser } from '../services/transactionApi';
-import { formatCurrency } from '../services/transactionService';
+import { formatCurrency, getSpendingByCategory } from '../services/transactionService';
 import type { Transaction } from '../types/transaction';
+import type { CategorySpending } from '../services/transactionService';
+
+const { width } = Dimensions.get('window');
 
 function getMonthKey(dateValue: Date): string {
   return `${dateValue.getFullYear()}-${dateValue.getMonth()}`;
@@ -42,342 +55,265 @@ function calculateMonthOverMonthTrend(transactions: Transaction[]): number {
   });
 
   if (previousMonthNet === 0) {
-    if (currentMonthNet === 0) {
-      return 0;
-    }
-
-    return currentMonthNet > 0 ? 100 : -100;
+    return currentMonthNet === 0 ? 0 : (currentMonthNet > 0 ? 100 : -100);
   }
 
   return ((currentMonthNet - previousMonthNet) / Math.abs(previousMonthNet)) * 100;
 }
 
 function formatTrendPercent(value: number): string {
+  if (typeof value !== 'number' || isNaN(value)) return '0.0%';
   const sign = value > 0 ? '+' : '';
   return `${sign}${value.toFixed(1)}%`;
 }
 
-function calculateTypeMonthOverMonthTrend(
-  transactions: Transaction[],
-  type: Transaction['type'],
-): number {
-  const now = new Date();
-  const currentMonthDate = new Date(now.getFullYear(), now.getMonth(), 1);
-  const previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const currentKey = getMonthKey(currentMonthDate);
-  const previousKey = getMonthKey(previousMonthDate);
-
-  let currentMonthTotal = 0;
-  let previousMonthTotal = 0;
-
-  transactions.forEach(item => {
-    if (item.type !== type) {
-      return;
-    }
-
-    const itemDate = new Date(item.date);
-    if (Number.isNaN(itemDate.getTime())) {
-      return;
-    }
-
-    const itemMonthKey = getMonthKey(itemDate);
-
-    if (itemMonthKey === currentKey) {
-      currentMonthTotal += item.amount;
-    } else if (itemMonthKey === previousKey) {
-      previousMonthTotal += item.amount;
-    }
-  });
-
-  if (previousMonthTotal === 0) {
-    if (currentMonthTotal === 0) {
-      return 0;
-    }
-
-    return 100;
-  }
-
-  return ((currentMonthTotal - previousMonthTotal) / Math.abs(previousMonthTotal)) * 100;
-}
-
 function getDaytimeGreeting(): string {
   const hour = new Date().getHours();
-  if (hour < 12) {
-    return 'Good Morning';
-  }
-
-  if (hour < 18) {
-    return 'Good Afternoon';
-  }
-
+  if (hour < 12) return 'Good Morning';
+  if (hour < 18) return 'Good Afternoon';
   return 'Good Evening';
-}
-
-function buildSmoothPath(values: number[], width: number, height: number, padding = 3): string {
-  const safeWidth = Math.max(1, width - padding * 2);
-  const safeHeight = Math.max(1, height - padding * 2);
-
-  if (values.length === 0) {
-    const y = padding + safeHeight / 2;
-    return `M ${padding} ${y} L ${padding + safeWidth} ${y}`;
-  }
-
-  if (values.length === 1) {
-    const y = padding + safeHeight / 2;
-    return `M ${padding} ${y} L ${padding + safeWidth} ${y}`;
-  }
-
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-
-  const points = values.map((value, index) => {
-    const x = padding + (index / (values.length - 1)) * safeWidth;
-    const y = padding + (1 - (value - min) / range) * safeHeight;
-    return { x, y };
-  });
-
-  let path = `M ${points[0].x} ${points[0].y}`;
-
-  for (let index = 1; index < points.length; index += 1) {
-    const prev = points[index - 1];
-    const curr = points[index];
-    const cp1x = prev.x + (curr.x - prev.x) / 2;
-    const cp2x = curr.x - (curr.x - prev.x) / 2;
-    path += ` C ${cp1x} ${prev.y}, ${cp2x} ${curr.y}, ${curr.x} ${curr.y}`;
-  }
-
-  return path;
 }
 
 function formatTransactionDate(dateValue: string): string {
   const parsedDate = new Date(dateValue);
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    return dateValue;
-  }
-
+  if (Number.isNaN(parsedDate.getTime())) return dateValue;
+  
   const now = new Date();
-  const isToday =
-    parsedDate.getFullYear() === now.getFullYear() &&
-    parsedDate.getMonth() === now.getMonth() &&
-    parsedDate.getDate() === now.getDate();
-
-  const prefix = isToday
-    ? 'Today'
-    : parsedDate.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-      });
-
-  const time = parsedDate.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-
-  return `${prefix}, ${time}`;
+  if (parsedDate.toDateString() === now.toDateString()) return 'Today';
+  
+  return parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function formatCategoryLabel(category: string): string {
-  return category
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
+  return category.charAt(0).toUpperCase() + category.slice(1);
 }
 
-function formatSignedAmount(transaction: Transaction): string {
-  const prefix = transaction.type === 'income' ? '+' : '-';
-  return `${prefix}${formatCurrency(transaction.amount)}`;
-}
-
-type DashboardProps = {
-  navigation: any;
-};
-
-export default function Dashboard({ navigation }: DashboardProps) {
-  const session = getAuthSession();
-  const displayName = session?.username?.trim() || 'User';
-  const profileInitial = displayName.charAt(0).toUpperCase();
+export default function Dashboard({ navigation }: { navigation: any }) {
+  // 1. All Hooks at the top
   const [totalBalance, setTotalBalance] = useState(0);
   const [incomeTotal, setIncomeTotal] = useState(0);
   const [expenseTotal, setExpenseTotal] = useState(0);
-  const [incomeTrend, setIncomeTrend] = useState(0);
-  const [expenseTrend, setExpenseTrend] = useState(0);
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
-  const [sparklineValues, setSparklineValues] = useState<number[]>([]);
+  const [categories, setCategories] = useState<CategorySpending[]>([]);
   const [monthTrend, setMonthTrend] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  useFocusEffect(
-    useCallback(() => {
-      let isMounted = true;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
-      const refreshDashboard = async () => {
-        try {
-          const allTransactions = await getTransactionsByUser();
+  const refreshCallback = useCallback(() => {
+    let isMounted = true;
+    const refreshDashboard = async () => {
+      try {
+        const [allTransactions, categoryData] = await Promise.all([
+          getTransactionsByUser(),
+          getSpendingByCategory()
+        ]);
 
-          const income = allTransactions
-            .filter(item => item.type === 'income')
-            .reduce((acc, item) => acc + item.amount, 0);
+        const income = allTransactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);
+        const expenses = allTransactions.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0);
 
-          const expenses = allTransactions
-            .filter(item => item.type === 'expense')
-            .reduce((acc, item) => acc + item.amount, 0);
+        if (!isMounted) return;
 
-          if (!isMounted) {
-            return;
-          }
+        setIncomeTotal(income);
+        setExpenseTotal(expenses);
+        setTotalBalance(income - expenses);
+        setRecentTransactions(allTransactions.slice(0, 5));
+        setCategories(categoryData.slice(0, 4));
+        setMonthTrend(calculateMonthOverMonthTrend(allTransactions));
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
 
-          setIncomeTotal(income);
-          setExpenseTotal(expenses);
-          setTotalBalance(income - expenses);
-          setRecentTransactions(allTransactions.slice(0, 4));
-          setSparklineValues(allTransactions.slice(0, 8).reverse().map(item => toSignedAmount(item)));
-          setMonthTrend(calculateMonthOverMonthTrend(allTransactions));
-          setIncomeTrend(calculateTypeMonthOverMonthTrend(allTransactions, 'income'));
-          setExpenseTrend(calculateTypeMonthOverMonthTrend(allTransactions, 'expense'));
-        } catch {
-          if (isMounted) {
-            setRecentTransactions([]);
-          }
-        } finally {
-          if (isMounted) {
-            setIsLoading(false);
-          }
-        }
-      };
+    setIsLoading(true);
+    void refreshDashboard();
+    return () => { isMounted = false; };
+  }, []);
 
-      setIsLoading(true);
-      void refreshDashboard();
+  useEffect(() => {
+    if (!isLoading) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [isLoading, fadeAnim, slideAnim]);
 
-      return () => {
-        isMounted = false;
-      };
-    }, []),
-  );
+  useFocusEffect(refreshCallback);
+
+  // 2. Non-hook logic
+  const session = getAuthSession();
+  const displayName = session?.username?.trim() || 'User';
 
   return (
     <View style={styles.screen}>
+      <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerRow}>
+        
+        {/* Premium Header */}
+        <Animated.View style={[styles.headerRow, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <View>
-            <Text style={styles.smallMuted}>Welcome back,</Text>
-            <Text style={styles.greeting}>{getDaytimeGreeting()}, {displayName}</Text>
+            <Text style={styles.greetingText}>{getDaytimeGreeting()}</Text>
+            <Text style={styles.userName}>{displayName}</Text>
           </View>
-          <View style={styles.avatarWrap}>
-            <Text style={styles.avatarText}>{profileInitial}</Text>
-          </View>
-        </View>
-
-        <View style={styles.balanceCard}>
-          <View style={styles.balanceFadeLeft} />
-          <View style={styles.balanceFadeLeftSoft} />
-          <View style={styles.balanceFadeMiddle} />
-          <View style={styles.balanceFadeRight} />
-          <Text style={styles.balanceLabel}>Total Balance</Text>
-          {isLoading ? (
-            <ActivityIndicator color="#8f7bff" style={styles.loadingIndicator} />
-          ) : (
-            <Text style={[styles.balanceValue, totalBalance < 0 ? styles.negativeBalance : null]}>
-              {totalBalance < 0 ? '-' : ''}{formatCurrency(Math.abs(totalBalance))}
-            </Text>
-          )}
-          <View style={styles.balanceMetaRow}>
-            <View
-              style={[
-                styles.trendPill,
-                monthTrend < 0 ? styles.trendPillNegative : monthTrend === 0 ? styles.trendPillNeutral : null,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.trendText,
-                  monthTrend < 0 ? styles.trendTextNegative : monthTrend === 0 ? styles.trendTextNeutral : null,
-                ]}
-              >
-                {formatTrendPercent(monthTrend)}
-              </Text>
-              <Text style={styles.trendSubText}>vs last month</Text>
-            </View>
-            <View style={styles.sparkWrap}>
-              <Svg width="100%" height="100%" viewBox="0 0 94 36" preserveAspectRatio="none">
-                <Path d={buildSmoothPath(sparklineValues, 94, 36, 3)} stroke="#8e7cff" strokeWidth={2.2} fill="none" />
+          <View style={styles.headerActions}>
+            <Pressable style={styles.iconButton}>
+              <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#8a90c6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <Path d="M13.73 21a2 2 0 0 1-3.46 0" />
               </Svg>
+              <View style={styles.notificationDot} />
+            </Pressable>
+            <Pressable style={styles.profileButton}>
+              <View style={styles.avatarGradient}>
+                <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
+              </View>
+            </Pressable>
+          </View>
+        </Animated.View>
+
+        {/* Wealth Section (Unified & Aligned) */}
+        <View style={styles.wealthContainer}>
+          <Animated.View style={[styles.balanceCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+            <Svg height="100%" width="100%" style={StyleSheet.absoluteFill}>
+              <Defs>
+                <LinearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <Stop offset="0%" stopColor="#8a6eff" stopOpacity="1" />
+                  <Stop offset="100%" stopColor="#5d3fd3" stopOpacity="1" />
+                </LinearGradient>
+              </Defs>
+              <Rect width="100%" height="100%" fill="url(#grad)" rx="24" />
+              <Circle cx="90%" cy="10%" r="60" fill="rgba(255,255,255,0.1)" />
+            </Svg>
+            
+            <View style={styles.balanceContent}>
+              <View style={styles.balanceHeaderLine}>
+                <Text style={styles.balanceLabel}>Total Balance</Text>
+                <View style={[styles.trendBadge, monthTrend < 0 && styles.trendBadgeNeg]}>
+                  <Text style={[styles.trendText, monthTrend < 0 && styles.trendTextNeg]}>
+                    {monthTrend >= 0 ? '↗' : '↘'} {formatTrendPercent(monthTrend)}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.balanceValue}>
+                {isLoading ? '...' : formatCurrency(totalBalance)}
+              </Text>
             </View>
+          </Animated.View>
+
+          <View style={styles.statsGrid}>
+            <Animated.View style={[styles.statCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+              <View style={[styles.statIconBox, { backgroundColor: 'rgba(32, 206, 143, 0.12)' }]}>
+                <Text style={[styles.statArrow, { color: '#20ce8f' }]}>↓</Text>
+              </View>
+              <View style={styles.statInfoWrap}>
+                <Text style={styles.statLabel}>Income</Text>
+                <Text style={[styles.statValue, { color: '#20ce8f' }]}>{formatCurrency(incomeTotal)}</Text>
+              </View>
+            </Animated.View>
+
+            <Animated.View style={[styles.statCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+              <View style={[styles.statIconBox, { backgroundColor: 'rgba(255, 77, 109, 0.12)' }]}>
+                <Text style={[styles.statArrow, { color: '#ff4d6d' }]}>↑</Text>
+              </View>
+              <View style={styles.statInfoWrap}>
+                <Text style={styles.statLabel}>Expenses</Text>
+                <Text style={[styles.statValue, { color: '#ff4d6d' }]}>{formatCurrency(expenseTotal)}</Text>
+              </View>
+            </Animated.View>
           </View>
         </View>
 
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <View style={[styles.statIconWrap, styles.incomeIconWrap]}>
-              <Text style={styles.statIconText}>v</Text>
-            </View>
-            <Text style={styles.statLabel}>Income</Text>
-            <Text style={styles.statValue}>{formatCurrency(incomeTotal)}</Text>
-            <Text
-              style={[
-                styles.statGrowth,
-                incomeTrend > 0 ? styles.statGrowthPositive : incomeTrend < 0 ? styles.statGrowthNegative : styles.statGrowthNeutral,
-              ]}
-            >
-              {formatTrendPercent(incomeTrend)}
-            </Text>
+        {/* Quick Category Overview */}
+        <Animated.View style={[{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Analytics Overview</Text>
+            <Pressable onPress={() => navigation.navigate('Analytics')}>
+              <Text style={styles.seeAll}>See Trends</Text>
+            </Pressable>
           </View>
-          <View style={styles.statCard}>
-            <View style={[styles.statIconWrap, styles.expenseIconWrap]}>
-              <Text style={styles.statIconText}>^</Text>
-            </View>
-            <Text style={styles.statLabel}>Expenses</Text>
-            <Text style={styles.statValue}>{formatCurrency(expenseTotal)}</Text>
-            <Text
-              style={[
-                styles.statGrowth,
-                expenseTrend > 0 ? styles.statGrowthNegative : expenseTrend < 0 ? styles.statGrowthPositive : styles.statGrowthNeutral,
-              ]}
-            >
-              {formatTrendPercent(expenseTrend)}
-            </Text>
+          
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
+            {categories.map((cat, idx) => (
+              <View key={cat.category} style={[styles.categoryCard, { marginLeft: idx === 0 ? 0 : 12 }]}>
+                <View style={styles.categoryCardHeader}>
+                  <View style={styles.catIconBox}>
+                    <Text style={styles.catEmoji}>{cat.category.charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <Text style={styles.catPercent}>{Math.round((cat.amount / (expenseTotal || 1)) * 100)}%</Text>
+                </View>
+                <Text style={styles.catName}>{formatCategoryLabel(cat.category)}</Text>
+                <Text style={styles.catAmount}>{formatCurrency(cat.amount)}</Text>
+                <View style={styles.progressBg}>
+                  <View style={[styles.progressFill, { width: `${Math.min(100, (cat.amount / (expenseTotal || 1)) * 100)}%` }]} />
+                </View>
+              </View>
+            ))}
+            {categories.length === 0 && !isLoading && (
+              <View style={styles.emptyCategories}>
+                <Text style={styles.mutedText}>No data available</Text>
+              </View>
+            )}
+          </ScrollView>
+        </Animated.View>
+
+        {/* Transactions Section */}
+        <Animated.View style={[{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent Transactions</Text>
+            <Pressable onPress={() => navigation.navigate('History')}>
+              <Text style={styles.seeAll}>History</Text>
+            </Pressable>
           </View>
-        </View>
 
-        <View style={styles.recentHead}>
-          <Text style={styles.recentTitle}>Recent Transactions</Text>
-          <Text style={styles.seeAll}>See All</Text>
-        </View>
-
-        {recentTransactions.length === 0 && !isLoading ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No transactions yet</Text>
-            <Text style={styles.emptyBody}>
-              Add a transaction to see the dashboard summary update instantly.
-            </Text>
-          </View>
-        ) : null}
-
-        {recentTransactions.map(tx => (
-          <Pressable
-            key={tx.id}
-            style={styles.transactionCard}
-            onPress={() => {
-              const parentNav = navigation.getParent();
-              if (parentNav) {
-                parentNav.navigate('TransactionDetail', { transaction: tx });
-              }
-            }}
-          >
-            <View style={styles.dotWrap}>
-              <Text style={styles.dotIcon}>{tx.type === 'income' ? '↑' : '↓'}</Text>
+          {isLoading ? (
+            <ActivityIndicator color="#8a6eff" style={{ marginTop: 20 }} />
+          ) : (
+            <View style={styles.txList}>
+              {recentTransactions.map((tx, idx) => (
+                <Pressable 
+                  key={tx.id} 
+                  style={[styles.txItem, idx === recentTransactions.length - 1 && styles.txItemLast]}
+                  onPress={() => navigation.navigate('TransactionDetail', { transaction: tx })}
+                >
+                  <View style={[styles.txIconWrap, { backgroundColor: tx.type === 'income' ? '#20ce8f15' : '#ff4d6d15' }]}>
+                    <Text style={[styles.txIcon, { color: tx.type === 'income' ? '#20ce8f' : '#ff4d6d' }]}>
+                      {tx.type === 'income' ? '↓' : '↑'}
+                    </Text>
+                  </View>
+                  <View style={styles.txInfo}>
+                    <Text style={styles.txCategory}>{formatCategoryLabel(tx.category)}</Text>
+                    <Text style={styles.txDate} numberOfLines={1}>
+                      {formatTransactionDate(tx.date)} {tx.note ? `• ${tx.note}` : ''}
+                    </Text>
+                  </View>
+                  <Text style={[styles.txAmount, { color: tx.type === 'income' ? '#20ce8f' : '#f8f9ff' }]}>
+                    {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
+                  </Text>
+                </Pressable>
+              ))}
+              {recentTransactions.length === 0 && (
+                <View style={styles.emptyState}>
+                  <View style={styles.emptyIconBox}>
+                    <Text style={styles.emptyIcon}>💰</Text>
+                  </View>
+                  <Text style={styles.emptyText}>No recent activity found.{"\n"}Time to track your first expense!</Text>
+                </View>
+              )}
             </View>
-            <View style={styles.txTextWrap}>
-              <Text style={styles.txTitle}>{formatCategoryLabel(tx.category)}</Text>
-              <Text style={styles.txSub}>{formatTransactionDate(tx.date)}</Text>
-            </View>
-            <Text style={[styles.txAmount, tx.type === 'income' ? styles.incomeAmount : styles.expenseAmount]}>
-              {formatSignedAmount(tx)}
-            </Text>
-          </Pressable>
-        ))}
+          )}
+        </Animated.View>
       </ScrollView>
     </View>
   );
@@ -386,283 +322,329 @@ export default function Dashboard({ navigation }: DashboardProps) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#090a1f',
+    backgroundColor: '#070817',
   },
   content: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingTop: 50,
-    paddingBottom: 118,
+    paddingBottom: 120,
   },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  avatarWrap: {
-    marginTop: 8,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: '#6d56ff',
-    backgroundColor: '#24274f',
-    justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 25,
+  },
+  greetingText: {
+    color: '#8a90c6',
+    fontSize: 14,
+    fontWeight: '500',
+    letterSpacing: 0.5,
+  },
+  userName: {
+    color: '#f7f8ff',
+    fontSize: 26,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#16193b',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ff4d6d',
+    borderWidth: 1.5,
+    borderColor: '#16193b',
+  },
+  profileButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    padding: 2,
+    backgroundColor: '#232859',
+  },
+  avatarGradient: {
+    flex: 1,
+    borderRadius: 20,
+    backgroundColor: '#8a6eff',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarText: {
-    color: '#f5f7ff',
-    fontSize: 12,
-    fontWeight: '700',
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
   },
-  smallMuted: {
-    color: '#8a90c6',
-    fontSize: 12,
-    marginBottom: 3,
-  },
-  greeting: {
-    color: '#f7f8ff',
-    fontSize: 27,
-    fontWeight: '700',
+  wealthContainer: {
+    backgroundColor: '#131635',
+    borderRadius: 40,
+    padding: 12,
+    marginBottom: 32,
+    borderWidth: 1,
+    borderColor: '#232859',
   },
   balanceCard: {
-    position: 'relative',
+    height: 160,
+    borderRadius: 30,
+    padding: 20,
+    justifyContent: 'center',
+    shadowColor: '#8a6eff',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 12,
     overflow: 'hidden',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#2d3260',
-    backgroundColor: '#1a1d4a',
-    padding: 14,
-    marginBottom: 11,
   },
-  balanceFadeLeft: {
-    position: 'absolute',
-    left: -30,
-    top: -32,
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    backgroundColor: 'rgba(116, 88, 255, 0.22)',
+  balanceContent: {
+    alignItems: 'flex-start',
   },
-  balanceFadeLeftSoft: {
-    position: 'absolute',
-    left: 44,
-    top: -10,
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    backgroundColor: 'rgba(116, 88, 255, 0.10)',
-  },
-  balanceFadeMiddle: {
-    position: 'absolute',
-    right: 86,
-    top: -6,
-    bottom: -6,
-    width: 120,
-    backgroundColor: 'rgba(55, 35, 136, 0.12)',
-  },
-  balanceFadeRight: {
-    position: 'absolute',
-    right: -18,
-    top: -8,
-    width: 126,
-    height: 126,
-    borderRadius: 63,
-    backgroundColor: 'rgba(96, 116, 255, 0.14)',
+  balanceHeaderLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
   },
   balanceLabel: {
-    color: '#c7cae4',
-    fontSize: 12,
-    marginBottom: 2,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   balanceValue: {
-    color: '#ffffff',
-    fontSize: 36,
+    color: '#fff',
+    fontSize: 40,
     fontWeight: '800',
-    marginBottom: 6,
+    marginTop: 4,
+    letterSpacing: -0.5,
   },
-  negativeBalance: {
-    color: '#ff7d9a',
+  trendBadge: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
   },
-  loadingIndicator: {
-    marginVertical: 12,
-  },
-  balanceMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  trendPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 14,
-    backgroundColor: '#124939',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  trendBadgeNeg: {
+    backgroundColor: 'rgba(255,77,109,0.2)',
   },
   trendText: {
-    color: '#30cf94',
-    fontSize: 10,
+    color: '#3dffb1',
+    fontSize: 12,
     fontWeight: '700',
   },
-  trendPillNegative: {
-    backgroundColor: '#4a1f2f',
-  },
-  trendPillNeutral: {
-    backgroundColor: '#2b3047',
-  },
-  trendTextNegative: {
+  trendTextNeg: {
     color: '#ff7d9a',
   },
-  trendTextNeutral: {
-    color: '#a7afd8',
-  },
-  trendSubText: {
-    color: '#7c85b8',
-    fontSize: 10,
-    marginLeft: 6,
-  },
-  sparkWrap: {
-    width: 94,
-    height: 36,
-    position: 'relative',
-  },
-  statsRow: {
+  statsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    gap: 12,
+    marginTop: 12,
   },
   statCard: {
-    width: '48.6%',
-    borderRadius: 14,
+    flex: 1,
+    backgroundColor: '#16193b',
+    borderRadius: 24,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#262932',
-    backgroundColor: '#11131a',
-    padding: 12,
+    borderColor: '#232859',
   },
-  statIconWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+  statIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginRight: 12,
   },
-  incomeIconWrap: {
-    backgroundColor: '#30333b',
+  statInfoWrap: {
+    flex: 1,
   },
-  expenseIconWrap: {
-    backgroundColor: '#30333b',
-  },
-  statIconText: {
-    color: '#b6bdcf',
-    fontSize: 11,
-    fontWeight: '700',
+  statArrow: {
+    fontSize: 18,
+    fontWeight: '800',
   },
   statLabel: {
-    color: '#8c93c8',
-    fontSize: 12,
-    marginBottom: 4,
+    color: '#8a90c6',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
   statValue: {
-    color: '#f5f7ff',
-    fontWeight: '700',
-    fontSize: 33,
-    marginBottom: 3,
+    fontSize: 15,
+    fontWeight: '800',
+    marginTop: 2,
   },
-  statGrowth: {
-    fontWeight: '700',
-    fontSize: 10,
-  },
-  statGrowthPositive: {
-    color: '#1dc98b',
-  },
-  statGrowthNegative: {
-    color: '#ff6e95',
-  },
-  statGrowthNeutral: {
-    color: '#a1a8d6',
-  },
-  recentHead: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 18,
   },
-  recentTitle: {
+  sectionTitle: {
     color: '#f4f5ff',
-    fontSize: 27,
-    fontWeight: '700',
+    fontSize: 19,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   seeAll: {
-    color: '#7357ff',
+    color: '#8a6eff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  categoryScroll: {
+    marginBottom: 32,
+    marginHorizontal: -20,
+    paddingHorizontal: 20,
+  },
+  categoryCard: {
+    width: 150,
+    backgroundColor: '#16193b',
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#232859',
+  },
+  categoryCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  catIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: 'rgba(138, 110, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  catEmoji: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#8a6eff',
+  },
+  catPercent: {
+    color: '#8a90c6',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  catName: {
+    color: '#8a90c6',
     fontSize: 13,
     fontWeight: '600',
   },
-  transactionCard: {
+  catAmount: {
+    color: '#f4f5ff',
+    fontSize: 17,
+    fontWeight: '800',
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  progressBg: {
+    height: 6,
+    backgroundColor: '#0a0c1f',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#8a6eff',
+    borderRadius: 3,
+  },
+  txList: {
+    backgroundColor: '#16193b',
+    borderRadius: 28,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#232859',
+  },
+  txItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: '#23262f',
-    backgroundColor: '#101219',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 9,
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#232859',
   },
-  dotWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#2f333d',
-    justifyContent: 'center',
+  txItemLast: {
+    borderBottomWidth: 0,
+  },
+  txIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
     alignItems: 'center',
-    marginRight: 10,
+    justifyContent: 'center',
+    marginRight: 16,
   },
-  dotIcon: {
-    color: '#cad1e3',
-    fontWeight: '700',
+  txIcon: {
+    fontSize: 20,
+    fontWeight: '800',
   },
-  txTextWrap: {
+  txInfo: {
     flex: 1,
   },
-  txTitle: {
+  txCategory: {
     color: '#f4f6ff',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
   },
-  txSub: {
-    color: '#7f85bf',
-    fontSize: 10,
-    marginTop: 2,
+  txDate: {
+    color: '#636781',
+    fontSize: 12,
+    marginTop: 3,
+    fontWeight: '500',
   },
   txAmount: {
-    fontWeight: '700',
     fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
-  incomeAmount: {
-    color: '#1bcd8d',
-  },
-  expenseAmount: {
-    color: '#f5f6ff',
+  emptyCategories: {
+    padding: 20,
   },
   emptyState: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#2a2d6d',
-    backgroundColor: '#111333',
-    padding: 16,
-    marginBottom: 9,
+    padding: 40,
+    alignItems: 'center',
   },
-  emptyTitle: {
-    color: '#f4f5ff',
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 4,
+  emptyIconBox: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#0a0c1f',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
-  emptyBody: {
-    color: '#8a90c8',
-    fontSize: 12,
-    lineHeight: 17,
+  emptyIcon: {
+    fontSize: 30,
+  },
+  emptyText: {
+    color: '#636781',
+    textAlign: 'center',
+    fontSize: 14,
+    lineHeight: 22,
+    fontWeight: '500',
+  },
+  mutedText: {
+    color: '#636781',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
