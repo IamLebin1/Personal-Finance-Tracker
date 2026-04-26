@@ -1,74 +1,99 @@
-import React, { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
+import { 
+  ScrollView, 
+  StyleSheet, 
+  Text, 
+  View, 
+  ActivityIndicator, 
+  Animated, 
+  Pressable, 
+  Dimensions, 
+  StatusBar,
+  InteractionManager
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { getSpendingByCategory, getSpendingByDate, getWeeklySpending, formatCurrency, type CategorySpending, type DaySpending } from '../services/transactionService';
+import Svg, { Circle, Rect, Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { 
+  getSpendingByCategory, 
+  getSpendingByDate, 
+  getWeeklySpending, 
+  formatCurrency, 
+  formatTrendPercent,
+  getMonthlySpendingTrendPercent,
+  type CategorySpending, 
+  type DaySpending 
+} from '../services/transactionService';
 import { getAuthSession } from '../services/authSession';
 import { getTransactionsByUser } from '../services/transactionApi';
 import type { Transaction } from '../types/transaction';
 
-const CATEGORY_COLORS = ['#3554ff', '#7849ff', '#ff4a7f', '#ffb359', '#00d4aa', '#ff6b9d', '#a78bfa', '#60a5fa'];
+const { width } = Dimensions.get('window');
+const CATEGORY_COLORS = ['#8a6eff', '#5d3fd3', '#20ce8f', '#ff4d6d', '#ffb359', '#00d4aa', '#ff6b9d', '#a78bfa'];
 
 export default function Analytics() {
   const [weeklySpending, setWeeklySpending] = useState<number>(0);
   const [categorySpending, setCategorySpending] = useState<CategorySpending[]>([]);
   const [daySpending, setDaySpending] = useState<DaySpending[]>([]);
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [spendingTrend, setSpendingTrend] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  const loadAnalytics = useCallback(async () => {
-    try {
-      setLoading(true);
-      const userId = getAuthSession()?.userId || '';
-      if (!userId) {
-        setWeeklySpending(0);
-        setCategorySpending([]);
-        setDaySpending([]);
-        setRecentTransactions([]);
-        return;
-      }
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
-      const [weekly, categories, dayData, transactions] = await Promise.all([
-        getWeeklySpending(userId),
-        getSpendingByCategory(userId),
-        getSpendingByDate(userId, currentMonth),
-        getTransactionsByUser(userId),
-      ]);
-      
-      setWeeklySpending(weekly);
-      setCategorySpending(categories);
-      setDaySpending(dayData);
-      setRecentTransactions(transactions.slice(0, 10));
-    } catch (error) {
-      console.error('Failed to load analytics:', error);
-    } finally {
-      setLoading(false);
-    }
+  const loadAnalytics = useCallback(() => {
+    let isMounted = true;
+    const task = InteractionManager.runAfterInteractions(async () => {
+      try {
+        const userId = getAuthSession()?.userId || '';
+        if (!userId) return;
+
+        const [weekly, categories, dayData, transactions, trend] = await Promise.all([
+          getWeeklySpending(userId),
+          getSpendingByCategory(userId),
+          getSpendingByDate(userId, currentMonth),
+          getTransactionsByUser(userId),
+          getMonthlySpendingTrendPercent(userId, currentMonth),
+        ]);
+        
+        if (!isMounted) return;
+        setWeeklySpending(weekly);
+        setCategorySpending(categories);
+        setDaySpending(dayData);
+        setRecentTransactions(transactions.slice(0, 5));
+        setSpendingTrend(trend);
+      } catch (error) {
+        console.error('Failed to load analytics:', error);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    });
+
+    setIsLoading(true);
+    return () => {
+      isMounted = false;
+      task.cancel();
+    };
   }, [currentMonth]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadAnalytics();
-    }, [loadAnalytics])
-  );
+  useFocusEffect(loadAnalytics);
 
-  const getCategoryColor = (index: number): string => {
-    return CATEGORY_COLORS[index % CATEGORY_COLORS.length];
-  };
+  useEffect(() => {
+    if (!isLoading) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [isLoading, fadeAnim, slideAnim]);
 
   const totalMonthlySpending = categorySpending.reduce((sum, cat) => sum + cat.amount, 0);
-  const lastWeekSpending = weeklySpending;
-  const weekTrend = lastWeekSpending > 0 ? '+12%' : '0%';
-
-  const getDaysInMonth = (date: Date): number => {
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  };
-
+  
   const renderCalendarDays = () => {
-    const daysInMonth = getDaysInMonth(currentMonth);
+    const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
     const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
     const dayMap = new Map(daySpending.map(d => [d.day, d]));
-    
     const days = [];
     
     for (let i = 0; i < firstDay; i++) {
@@ -77,140 +102,137 @@ export default function Analytics() {
     
     for (let day = 1; day <= daysInMonth; day++) {
       const stats = dayMap.get(day);
-      const isSurplus = stats && stats.income > stats.expense;
-      const isExpense = stats && stats.expense > stats.income;
-      const hasActivity = isSurplus || isExpense;
+      const net = stats ? stats.income - stats.expense : 0;
+      const hasActivity = !!stats && (stats.income > 0 || stats.expense > 0);
       
       days.push(
-        <View 
-          key={day} 
-          style={[
-            styles.calendarDay, 
-            isSurplus && styles.calendarDaySurplus,
-            isExpense && styles.calendarDayExpense
-          ]}
-        >
-          <Text style={[styles.calendarDayNumber, hasActivity && styles.calendarDayNumberActive]}>
-            {day}
-          </Text>
+        <View key={day} style={[styles.calendarDay, hasActivity && (net >= 0 ? styles.daySurplus : styles.dayExpense)]}>
+          <Text style={[styles.dayNumber, hasActivity && styles.dayNumberActive]}>{day}</Text>
           {hasActivity && (
-            <Text style={styles.calendarDayAmount}>
-              {formatCurrency(isSurplus ? (stats?.income || 0) - (stats?.expense || 0) : (stats?.expense || 0)).replace('$', '')}
+            <Text style={[styles.dayAmount, { color: net >= 0 ? '#20ce8f' : '#ff4d6d' }]} numberOfLines={1}>
+              {net >= 0 ? `+${Math.round(net)}` : `-${Math.round(Math.abs(net))}`}
             </Text>
           )}
         </View>
       );
     }
-    
     return days;
+  };
+
+  const renderCurveGraph = () => {
+    if (daySpending.length < 2) return null;
+    
+    const h = 60;
+    const w = width - 40;
+    const maxVal = Math.max(...daySpending.map(d => d.expense), 10);
+    
+    // Reverse data so newest (highest day number) is on the left
+    const reversedData = [...daySpending].sort((a, b) => b.day - a.day);
+
+    const points = reversedData.map((d, i) => ({
+      x: (i / (reversedData.length - 1)) * w,
+      y: h - (d.expense / maxVal) * h
+    }));
+
+    let d = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[i];
+      const p1 = points[i + 1];
+      const cp1x = p0.x + (p1.x - p0.x) / 2;
+      d += ` C ${cp1x} ${p0.y}, ${cp1x} ${p1.y}, ${p1.x} ${p1.y}`;
+    }
+
+    const fillD = `${d} L ${points[points.length-1].x} ${h} L ${points[0].x} ${h} Z`;
+
+    return (
+      <View style={styles.graphOverlay}>
+        <Svg height={h} width={w} preserveAspectRatio="none">
+          <Defs>
+            <LinearGradient id="areaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <Stop offset="0%" stopColor="#8a6eff" stopOpacity={0.4} />
+              <Stop offset="100%" stopColor="#8a6eff" stopOpacity={0} />
+            </LinearGradient>
+          </Defs>
+          <Path d={fillD} fill="url(#areaGrad)" />
+          <Path d={d} fill="none" stroke="#8a6eff" strokeWidth={3} />
+        </Svg>
+      </View>
+    );
   };
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.header}>Financial Analytics</Text>
+      <StatusBar barStyle="light-content" />
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Financial Insights</Text>
+        <Text style={styles.headerSubtitle}>Analyze your wealth performance</Text>
+      </View>
 
-        {loading ? (
-          <ActivityIndicator size="large" color="#815fff" style={{ marginTop: 40 }} />
-        ) : (
-          <>
-            {/* 1. Trend Chart Section */}
-            <View style={styles.weekCard}>
-              <Text style={styles.cardSub}>Transaction Trend</Text>
-              <Text style={styles.weekValue}>{formatCurrency(lastWeekSpending)}</Text>
-              <Text style={styles.trend}>{weekTrend} vs last week</Text>
-
-              <View style={styles.fakeChart}>
-                <View style={[styles.trendLine, { height: 2, backgroundColor: '#815fff', width: '100%', top: 35, opacity: 0.3 }]} />
-                <View style={[styles.point, { left: '5%', top: 40 }]} />
-                <View style={[styles.point, { left: '20%', top: 25 }]} />
-                <View style={[styles.point, { left: '40%', top: 45 }]} />
-                <View style={[styles.point, { left: '60%', top: 15 }]} />
-                <View style={[styles.point, { left: '80%', top: 30 }]} />
-                <View style={[styles.point, { left: '95%', top: 20 }]} />
-              </View>
-            </View>
-
-            {/* 2. Calendar Section */}
-            <View style={styles.monthCard}>
-              <View style={styles.monthHeader}>
-                <Text style={styles.monthTitle}>
-                  {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
-                </Text>
-              </View>
-              <View style={styles.weekdaysRow}>
-                {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
-                  <Text key={day} style={styles.weekdayLabel}>
-                    {day}
-                  </Text>
-                ))}
-              </View>
-              <View style={styles.calendarGrid}>
-                {renderCalendarDays()}
-              </View>
-              <View style={styles.calendarLegend}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#20ce8f' }]} />
-                  <Text style={styles.legendText}>Surplus</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#ff5a4a' }]} />
-                  <Text style={styles.legendText}>Expense</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* 3. Transaction List Section */}
-            <View style={styles.categoriesCard}>
-              <Text style={styles.categoriesTitle}>Recent Transactions</Text>
+      {isLoading ? (
+        <View style={styles.centerBox}>
+          <ActivityIndicator color="#8a6eff" size="large" />
+        </View>
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+            
+            {/* 1. Monthly Overview Card */}
+            <View style={styles.insightCard}>
+              <Svg height="100%" width="100%" style={StyleSheet.absoluteFill}>
+                <Defs>
+                  <LinearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <Stop offset="0%" stopColor="#16193b" stopOpacity={1} />
+                    <Stop offset="100%" stopColor="#0a0c1f" stopOpacity={1} />
+                  </LinearGradient>
+                </Defs>
+                <Rect width="100%" height="100%" fill="url(#grad)" rx="28" />
+              </Svg>
               
-              {recentTransactions.map((tx) => (
-                <View key={tx.id} style={styles.categoryItem}>
-                  <View style={[styles.categoryIcon, { backgroundColor: tx.type === 'income' ? '#20ce8f20' : '#ff5a4a20' }]}>
-                    <Text style={[styles.categoryIconText, { color: tx.type === 'income' ? '#20ce8f' : '#ff5a4a' }]}>
-                      {tx.category.charAt(0).toUpperCase()}
+              <View style={styles.cardHeader}>
+                <View style={styles.cardLabelRow}>
+                  <Text style={styles.cardLabel}>Monthly Spending</Text>
+                  <View style={[styles.trendBadge, spendingTrend < 0 ? styles.trendBadgePos : styles.trendBadgeNeg]}>
+                    <Text style={[styles.trendText, spendingTrend < 0 ? styles.trendTextPos : styles.trendTextNeg]}>
+                      {spendingTrend <= 0 ? '↘' : '↗'} {formatTrendPercent(Math.abs(spendingTrend))}
                     </Text>
                   </View>
-                  <View style={styles.categoryInfo}>
-                    <Text style={styles.categoryName}>{tx.category}</Text>
-                    <Text style={styles.categoryPercent}>
-                      {new Date(tx.date).toLocaleDateString()} • {tx.note || 'No note'}
-                    </Text>
-                  </View>
-                  <Text style={[styles.categoryAmount, { color: tx.type === 'income' ? '#20ce8f' : '#ff5a4a' }]}>
-                    {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
-                  </Text>
                 </View>
-              ))}
-              
-              {recentTransactions.length === 0 && (
-                <Text style={styles.emptyText}>No transactions found for this period.</Text>
-              )}
-            </View>
-
-            <View style={[styles.breakdownCard, { marginTop: 12 }]}>
-              <Text style={styles.breakdownTitle}>Category Distribution</Text>
-
-              <View style={styles.ringWrap}>
-                <View style={styles.ringOuter}>
-                  <View style={styles.ringInner}>
-                    <Text style={styles.totalLabel}>Total</Text>
-                    <Text style={styles.totalValue}>{formatCurrency(totalMonthlySpending)}</Text>
-                  </View>
-                </View>
+                <Text style={styles.cardValue}>{formatCurrency(totalMonthlySpending)}</Text>
               </View>
 
-              {categorySpending.slice(0, 3).map((category, index) => (
-                <View key={category.category} style={styles.legendRow}>
-                  <View style={[styles.dot, { backgroundColor: getCategoryColor(index) }]} />
-                  <Text style={styles.legendLabel}>{category.category}</Text>
-                  <Text style={styles.legendPct}>{category.percentage.toFixed(1)}%</Text>
+              {renderCurveGraph()}
+            </View>
+
+            {/* 2. Calendar View */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Daily Activity</Text>
+              <Text style={styles.monthName}>{currentMonth.toLocaleString('en-US', { month: 'long' })}</Text>
+            </View>
+            <View style={styles.calendarContainer}>
+              <View style={styles.weekdays}>
+                {['S','M','T','W','T','F','S'].map((d, i) => <Text key={i} style={styles.weekday}>{d}</Text>)}
+              </View>
+              <View style={styles.calendarGrid}>{renderCalendarDays()}</View>
+            </View>
+
+            {/* 3. Category Breakdown */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Category Distribution</Text>
+            </View>
+            <View style={styles.categoriesBox}>
+              {categorySpending.map((cat, i) => (
+                <View key={cat.category} style={styles.catItem}>
+                  <View style={[styles.catColor, { backgroundColor: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }]} />
+                  <Text style={styles.catName}>{cat.category.charAt(0).toUpperCase() + cat.category.slice(1)}</Text>
+                  <Text style={styles.catPercent}>{cat.percentage.toFixed(0)}%</Text>
+                  <Text style={styles.catAmount}>{formatCurrency(cat.amount)}</Text>
                 </View>
               ))}
             </View>
-          </>
-        )}
-      </ScrollView>
+
+          </Animated.View>
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -218,154 +240,132 @@ export default function Analytics() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#090a1f',
-  },
-  content: {
-    paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 110,
+    backgroundColor: '#070817',
   },
   header: {
-    color: '#f5f7ff',
-    fontSize: 24,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 14,
+    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
   },
-  weekCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#2c306f',
-    backgroundColor: '#121437',
-    padding: 14,
-    marginBottom: 12,
-  },
-  cardSub: {
-    color: '#8f95ca',
-    fontSize: 13,
-  },
-  weekValue: {
-    color: '#f8f8ff',
-    fontSize: 36,
+  headerTitle: {
+    color: '#f4f6ff',
+    fontSize: 28,
     fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    color: '#8a90c6',
+    fontSize: 14,
+    fontWeight: '500',
     marginTop: 4,
   },
-  trend: {
-    color: '#20ce8f',
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 10,
+  content: {
+    paddingHorizontal: 20,
+    paddingBottom: 120,
   },
-  fakeChart: {
-    height: 70,
-    borderRadius: 14,
-    backgroundColor: '#0f1130',
-    borderWidth: 1,
-    borderColor: '#272a66',
-    overflow: 'hidden',
-  },
-  trendLine: {
-    position: 'absolute',
-  },
-  point: {
-    position: 'absolute',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#815fff',
-  },
-  breakdownCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#2c306f',
-    backgroundColor: '#121437',
-    padding: 14,
-  },
-  breakdownTitle: {
-    color: '#f0f2ff',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  ringWrap: {
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  ringOuter: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    borderWidth: 10,
-    borderColor: '#724eff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#1a1d4b',
-  },
-  ringInner: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    backgroundColor: '#121437',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  totalLabel: {
-    color: '#8790cf',
-    fontSize: 12,
-  },
-  totalValue: {
-    color: '#f4f6ff',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  legendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 7,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  legendLabel: {
+  centerBox: {
     flex: 1,
-    color: '#d5d9ff',
-    fontSize: 13,
-  },
-  legendPct: {
-    color: '#dfe2ff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  monthCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#2c306f',
-    backgroundColor: '#121437',
-    padding: 14,
-    marginBottom: 12,
-  },
-  monthHeader: {
+    justifyContent: 'center',
     alignItems: 'center',
+  },
+  insightCard: {
+    height: 180,
+    borderRadius: 28,
+    padding: 24,
+    marginBottom: 32,
+    borderWidth: 1,
+    borderColor: '#232859',
+    overflow: 'hidden',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  cardHeader: {
+    justifyContent: 'center',
+  },
+  cardLabel: {
+    color: '#8a90c6',
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  cardLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  trendBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  trendBadgePos: {
+    backgroundColor: 'rgba(32, 206, 143, 0.15)',
+  },
+  trendBadgeNeg: {
+    backgroundColor: 'rgba(255, 77, 109, 0.15)',
+  },
+  trendText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  trendTextPos: {
+    color: '#20ce8f',
+  },
+  trendTextNeg: {
+    color: '#ff4d6d',
+  },
+  cardValue: {
+    color: '#fff',
+    fontSize: 32,
+    fontWeight: '800',
+    marginTop: 8,
+  },
+  miniChart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: '100%',
+    gap: 6,
+  },
+  chartBar: {
+    width: 12,
+    borderRadius: 6,
+    minHeight: 10,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    color: '#f4f6ff',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  monthName: {
+    color: '#8a6eff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  calendarContainer: {
+    backgroundColor: '#16193b',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 32,
+    borderWidth: 1,
+    borderColor: '#232859',
+  },
+  weekdays: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
     marginBottom: 12,
   },
-  monthTitle: {
-    color: '#f8f8ff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  weekdaysRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-    justifyContent: 'space-around',
-  },
-  weekdayLabel: {
-    color: '#8f95ca',
+  weekday: {
+    color: '#636781',
     fontSize: 11,
-    fontWeight: '600',
-    width: '14.28%',
+    fontWeight: '800',
+    width: 34,
     textAlign: 'center',
   },
   calendarGrid: {
@@ -374,115 +374,73 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
   },
   calendarDay: {
-    width: '14.28%',
-    aspectRatio: 1,
+    width: 34,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
-    marginBottom: 4,
+    marginBottom: 8,
   },
-  calendarDayExpense: {
-    backgroundColor: '#ff5a4a',
-  },
-  calendarDaySurplus: {
-    backgroundColor: '#20ce8f',
-  },
-  calendarDayNumber: {
-    color: '#8f95ca',
-    fontSize: 12,
+  dayNumber: {
+    color: '#8a90c6',
+    fontSize: 13,
     fontWeight: '600',
   },
-  calendarDayNumberActive: {
+  dayNumberActive: {
     color: '#fff',
   },
-  calendarDayAmount: {
-    color: '#fff',
+  dayAmount: {
     fontSize: 8,
-    fontWeight: '700',
+    fontWeight: '800',
+    marginTop: 2,
   },
-  calendarLegend: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 10,
-    gap: 15,
+  graphOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 60,
   },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+  curveContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+    paddingBottom: 4,
   },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    color: '#8f95ca',
-    fontSize: 10,
-  },
-  categoriesCard: {
-    borderRadius: 18,
+  categoriesBox: {
+    backgroundColor: '#16193b',
+    borderRadius: 24,
+    padding: 16,
     borderWidth: 1,
-    borderColor: '#2c306f',
-    backgroundColor: '#121437',
-    padding: 14,
+    borderColor: '#232859',
   },
-  categoriesTitle: {
-    color: '#f0f2ff',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  totalExpense: {
-    color: '#ff5a4a',
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  categoryItem: {
+  catItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-    paddingBottom: 12,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#2c306f',
+    borderBottomColor: '#232859',
   },
-  categoryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+  catColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     marginRight: 12,
   },
-  categoryIconText: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  categoryInfo: {
+  catName: {
     flex: 1,
-  },
-  categoryName: {
-    color: '#d5d9ff',
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  categoryPercent: {
-    color: '#8f95ca',
-    fontSize: 11,
-  },
-  categoryAmount: {
-    fontSize: 13,
+    color: '#f4f6ff',
+    fontSize: 14,
     fontWeight: '700',
   },
-  emptyText: {
-    color: '#8f95ca',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 20,
-    marginBottom: 20,
+  catPercent: {
+    color: '#8a90c6',
+    fontSize: 12,
+    fontWeight: '600',
+    marginRight: 12,
+  },
+  catAmount: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
   },
 });
-
-

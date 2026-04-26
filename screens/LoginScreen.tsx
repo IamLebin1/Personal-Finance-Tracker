@@ -93,7 +93,7 @@ const LoginScreen = ({ navigation, route }: Props) => {
         }
         return responseJson;
       })
-      .then(responseJson => {
+      .then(async responseJson => {
         const token = String(responseJson?.token || '');
         const userId = String(responseJson?.user?.id || '');
         const loggedInUsername = String(responseJson?.user?.username || trimmedUsername);
@@ -102,7 +102,7 @@ const LoginScreen = ({ navigation, route }: Props) => {
           throw new Error('Login response missing session data');
         }
 
-        setAuthSession({
+        await setAuthSession({
           token,
           userId,
           username: loggedInUsername,

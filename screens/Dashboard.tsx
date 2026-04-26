@@ -9,7 +9,8 @@ import {
   View, 
   Dimensions, 
   Animated, 
-  StatusBar 
+  StatusBar,
+  InteractionManager
 } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop, Rect, Circle } from 'react-native-svg';
 import { getAuthSession } from '../services/authSession';
@@ -78,10 +79,11 @@ function formatTransactionDate(dateValue: string): string {
   const parsedDate = new Date(dateValue);
   if (Number.isNaN(parsedDate.getTime())) return dateValue;
   
-  const now = new Date();
-  if (parsedDate.toDateString() === now.toDateString()) return 'Today';
-  
-  return parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return parsedDate.toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric',
+    year: 'numeric'
+  });
 }
 
 function formatCategoryLabel(category: string): string {
@@ -103,12 +105,18 @@ export default function Dashboard({ navigation }: { navigation: any }) {
 
   const refreshCallback = useCallback(() => {
     let isMounted = true;
-    const refreshDashboard = async () => {
+    
+    const task = InteractionManager.runAfterInteractions(async () => {
       try {
         const [allTransactions, categoryData] = await Promise.all([
           getTransactionsByUser(),
           getSpendingByCategory()
         ]);
+
+        // Sort transactions by date descending (newest first)
+        const sortedTransactions = [...allTransactions].sort((a, b) => 
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
 
         const income = allTransactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);
         const expenses = allTransactions.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0);
@@ -118,7 +126,7 @@ export default function Dashboard({ navigation }: { navigation: any }) {
         setIncomeTotal(income);
         setExpenseTotal(expenses);
         setTotalBalance(income - expenses);
-        setRecentTransactions(allTransactions.slice(0, 5));
+        setRecentTransactions(sortedTransactions.slice(0, 5));
         setCategories(categoryData.slice(0, 4));
         setMonthTrend(calculateMonthOverMonthTrend(allTransactions));
       } catch (err) {
@@ -126,11 +134,13 @@ export default function Dashboard({ navigation }: { navigation: any }) {
       } finally {
         if (isMounted) setIsLoading(false);
       }
-    };
+    });
 
     setIsLoading(true);
-    void refreshDashboard();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      task.cancel();
+    };
   }, []);
 
   useEffect(() => {
@@ -183,19 +193,22 @@ export default function Dashboard({ navigation }: { navigation: any }) {
           </View>
         </Animated.View>
 
-        {/* Wealth Section (Unified & Aligned) */}
-        <View style={styles.wealthContainer}>
+        {/* Unified Wealth Section */}
+        <View style={styles.wealthSection}>
+          {/* Main Balance Card */}
           <Animated.View style={[styles.balanceCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-            <Svg height="100%" width="100%" style={StyleSheet.absoluteFill}>
-              <Defs>
-                <LinearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <Stop offset="0%" stopColor="#8a6eff" stopOpacity="1" />
-                  <Stop offset="100%" stopColor="#5d3fd3" stopOpacity="1" />
-                </LinearGradient>
-              </Defs>
-              <Rect width="100%" height="100%" fill="url(#grad)" rx="24" />
-              <Circle cx="90%" cy="10%" r="60" fill="rgba(255,255,255,0.1)" />
-            </Svg>
+            <View style={StyleSheet.absoluteFill}>
+              <Svg height="100%" width="100%" viewBox="0 0 350 170" preserveAspectRatio="none">
+                <Defs>
+                  <LinearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <Stop offset="0%" stopColor="#8a6eff" stopOpacity="1" />
+                    <Stop offset="100%" stopColor="#5d3fd3" stopOpacity="1" />
+                  </LinearGradient>
+                </Defs>
+                <Rect width="100%" height="100%" fill="url(#grad)" />
+                <Circle cx="320" cy="30" r="60" fill="rgba(255,255,255,0.1)" />
+              </Svg>
+            </View>
             
             <View style={styles.balanceContent}>
               <View style={styles.balanceHeaderLine}>
@@ -212,7 +225,8 @@ export default function Dashboard({ navigation }: { navigation: any }) {
             </View>
           </Animated.View>
 
-          <View style={styles.statsGrid}>
+          {/* Income & Expense Stats Row */}
+          <View style={styles.statsContainer}>
             <Animated.View style={[styles.statCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
               <View style={[styles.statIconBox, { backgroundColor: 'rgba(32, 206, 143, 0.12)' }]}>
                 <Text style={[styles.statArrow, { color: '#20ce8f' }]}>↓</Text>
@@ -390,18 +404,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
-  wealthContainer: {
-    backgroundColor: '#131635',
-    borderRadius: 40,
-    padding: 12,
+  wealthSection: {
     marginBottom: 32,
-    borderWidth: 1,
-    borderColor: '#232859',
   },
   balanceCard: {
-    height: 160,
-    borderRadius: 30,
-    padding: 20,
+    height: 170,
+    borderRadius: 28,
+    padding: 24,
     justifyContent: 'center',
     shadowColor: '#8a6eff',
     shadowOffset: { width: 0, height: 12 },
@@ -409,6 +418,11 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 12,
     overflow: 'hidden',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
   },
   balanceContent: {
     alignItems: 'flex-start',
@@ -449,11 +463,6 @@ const styles = StyleSheet.create({
   },
   trendTextNeg: {
     color: '#ff7d9a',
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
   },
   statCard: {
     flex: 1,

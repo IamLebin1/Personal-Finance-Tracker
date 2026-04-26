@@ -8,7 +8,8 @@ import {
   Animated, 
   Pressable, 
   TextInput, 
-  StatusBar 
+  StatusBar,
+  InteractionManager
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Svg, { Path, Circle } from 'react-native-svg';
@@ -47,27 +48,30 @@ export default function History() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
 
-  useFocusEffect(
-    useCallback(() => {
-      let isMounted = true;
-      const loadTransactions = async () => {
-        setIsLoading(true);
-        try {
-          const rows = await getTransactionsByUser();
-          if (isMounted) {
-            setTransactions(rows);
-            setFilteredTransactions(rows);
-          }
-        } finally {
-          if (isMounted) {
-            setIsLoading(false);
-          }
+  const loadTransactions = useCallback(() => {
+    let isMounted = true;
+    const task = InteractionManager.runAfterInteractions(async () => {
+      try {
+        const rows = await getTransactionsByUser();
+        if (isMounted) {
+          setTransactions(rows);
+          setFilteredTransactions(rows);
         }
-      };
-      void loadTransactions();
-      return () => { isMounted = false; };
-    }, [])
-  );
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    });
+    
+    setIsLoading(true);
+    return () => {
+      isMounted = false;
+      task.cancel();
+    };
+  }, []);
+
+  useFocusEffect(loadTransactions);
 
   useEffect(() => {
     if (!isLoading) {
@@ -175,7 +179,7 @@ export default function History() {
                           {item.type === 'income' ? '+' : '-'}{formatCurrency(item.amount)}
                         </Text>
                         <Text style={styles.txTime}>
-                          {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(item.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                         </Text>
                       </View>
                     </View>

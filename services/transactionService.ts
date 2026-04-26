@@ -103,22 +103,42 @@ export async function getWeeklySpending(_userId?: string): Promise<number> {
     .reduce((sum, tx) => sum + tx.amount, 0);
 }
 
-export async function getMonthlySpendingTrend(_userId?: string, monthDate?: Date): Promise<number> {
+export async function getMonthlySpendingTrendPercent(_userId?: string, monthDate?: Date): Promise<number> {
   const transactions = await getTransactionsByUser();
   const expenses = transactions.filter(tx => tx.type === 'expense');
   
   const targetDate = monthDate || new Date();
-  const year = targetDate.getFullYear();
-  const month = targetDate.getMonth();
+  const curYear = targetDate.getFullYear();
+  const curMonth = targetDate.getMonth();
   
-  return expenses
+  const prevDate = new Date(curYear, curMonth - 1, 1);
+  const prevYear = prevDate.getFullYear();
+  const prevMonth = prevDate.getMonth();
+  
+  const currentTotal = expenses
     .filter(tx => {
-      const date = new Date(tx.date);
-      return date.getFullYear() === year && date.getMonth() === month;
+      const d = new Date(tx.date);
+      return d.getFullYear() === curYear && d.getMonth() === curMonth;
     })
     .reduce((sum, tx) => sum + tx.amount, 0);
+
+  const prevTotal = expenses
+    .filter(tx => {
+      const d = new Date(tx.date);
+      return d.getFullYear() === prevYear && d.getMonth() === prevMonth;
+    })
+    .reduce((sum, tx) => sum + tx.amount, 0);
+
+  if (prevTotal === 0) return currentTotal > 0 ? 100 : 0;
+  return ((currentTotal - prevTotal) / prevTotal) * 100;
 }
 
 export function formatCurrency(amount: number): string {
   return `$${Math.abs(amount).toFixed(2)}`;
+}
+
+export function formatTrendPercent(value: number): string {
+  if (typeof value !== 'number' || isNaN(value)) return '0.0%';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toFixed(1)}%`;
 }

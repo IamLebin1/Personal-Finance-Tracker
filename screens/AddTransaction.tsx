@@ -154,33 +154,32 @@ export default function AddTransaction({ navigation, route }: Props) {
       return;
     }
 
-    Animated.sequence([
+    Animated.parallel([
       Animated.timing(burstScale, {
         toValue: spreadScaleTarget,
-        duration: 420,
+        duration: 500,
         useNativeDriver: true,
       }),
-      Animated.parallel([
-        Animated.timing(burstOpacity, {
-          toValue: 0,
-          duration: 140,
-          useNativeDriver: true,
-        }),
-        Animated.timing(contentOpacity, {
-          toValue: 1,
-          duration: 170,
-          delay: 120,
-          useNativeDriver: true,
-        }),
-        Animated.spring(contentScale, {
-          toValue: 1,
-          damping: 12,
-          stiffness: 170,
-          mass: 0.9,
-          delay: 120,
-          useNativeDriver: true,
-        }),
-      ]),
+      Animated.timing(burstOpacity, {
+        toValue: 0,
+        duration: 500,
+        delay: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(contentOpacity, {
+        toValue: 1,
+        duration: 350,
+        delay: 150,
+        useNativeDriver: true,
+      }),
+      Animated.spring(contentScale, {
+        toValue: 1,
+        damping: 15,
+        stiffness: 100,
+        mass: 1,
+        delay: 150,
+        useNativeDriver: true,
+      }),
     ]).start();
   }, [burstOpacity, burstScale, contentOpacity, contentScale, fromFab, spreadScaleTarget]);
 
