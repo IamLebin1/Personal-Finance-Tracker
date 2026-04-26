@@ -245,8 +245,7 @@ export default function AddTransaction({ navigation, route }: Props) {
     if (key.action.type === 'save') {
       setIsCalculatorVisible(false);
 
-      // Compute the final number synchronously and pass it to onSave(),
-      // since setAmount(...) won't update parsedAmount until the next render.
+      // Compute the final number synchronously and update amount state
       if (calcOperator && calcAccumulator !== null) {
         const { value: rightValue } = formatSafeAmount(amount);
         const nextValue = calcOperator === '+' ? calcAccumulator + rightValue : calcAccumulator - rightValue;
@@ -254,7 +253,6 @@ export default function AddTransaction({ navigation, route }: Props) {
         setAmount(formatFixedMoney(finalValue));
         setCalcAccumulator(null);
         setCalcOperator(null);
-        void onSave(finalValue);
         return;
       }
 
@@ -263,11 +261,8 @@ export default function AddTransaction({ navigation, route }: Props) {
         setAmount(formatFixedMoney(finalValue));
         setCalcAccumulator(null);
         setCalcOperator(null);
-        void onSave(finalValue);
         return;
       }
-
-      void onSave();
       return;
     }
 
@@ -441,6 +436,16 @@ export default function AddTransaction({ navigation, route }: Props) {
               </Pressable>
             ))}
           </View>
+
+          <Pressable 
+            style={[styles.bottomConfirmButton, isSaving && styles.bottomConfirmButtonDisabled]} 
+            onPress={() => void onSave()}
+            disabled={isSaving}
+          >
+            <Text style={styles.bottomConfirmButtonText}>
+              {isSaving ? 'Saving...' : 'Confirm Transaction'}
+            </Text>
+          </Pressable>
         </ScrollView>
       </Animated.View>
 
@@ -924,5 +929,28 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '700',
+  },
+  bottomConfirmButton: {
+    marginTop: 30,
+    backgroundColor: '#6f53ff',
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#6f53ff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  bottomConfirmButtonDisabled: {
+    opacity: 0.6,
+    backgroundColor: '#4a4d7a',
+  },
+  bottomConfirmButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
 });

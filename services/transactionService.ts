@@ -16,6 +16,8 @@ export interface DaySpending {
   date: string;
   day: number;
   amount: number;
+  income: number;
+  expense: number;
 }
 
 export async function getDashboardSummary(_userId?: string): Promise<DashboardSummary> {
@@ -25,7 +27,7 @@ export async function getDashboardSummary(_userId?: string): Promise<DashboardSu
     return tx.type === 'income' ? acc + tx.amount : acc - tx.amount;
   }, 0);
 
-  const recentTransactions = all.slice(0, 3);
+  const recentTransactions = all.slice(0, 5);
 
   return {
     totalBalance,
@@ -57,27 +59,33 @@ export async function getSpendingByCategory(_userId?: string): Promise<CategoryS
 
 export async function getSpendingByDate(_userId?: string, monthDate?: Date): Promise<DaySpending[]> {
   const transactions = await getTransactionsByUser();
-  const expenses = transactions.filter(tx => tx.type === 'expense');
   
   const targetDate = monthDate || new Date();
   const year = targetDate.getFullYear();
   const month = targetDate.getMonth();
   
-  const dayMap = new Map<number, number>();
+  const dayMap = new Map<number, { income: number; expense: number }>();
   
-  expenses.forEach(tx => {
+  transactions.forEach(tx => {
     const date = new Date(tx.date);
     if (date.getFullYear() === year && date.getMonth() === month) {
       const day = date.getDate();
-      const current = dayMap.get(day) || 0;
-      dayMap.set(day, current + tx.amount);
+      const current = dayMap.get(day) || { income: 0, expense: 0 };
+      if (tx.type === 'income') {
+        current.income += tx.amount;
+      } else if (tx.type === 'expense') {
+        current.expense += tx.amount;
+      }
+      dayMap.set(day, current);
     }
   });
   
-  const result: DaySpending[] = Array.from(dayMap.entries()).map(([day, amount]) => ({
+  const result: DaySpending[] = Array.from(dayMap.entries()).map(([day, stats]) => ({
     date: new Date(year, month, day).toISOString().split('T')[0],
     day,
-    amount,
+    amount: stats.expense, // Keep for backward compatibility if needed
+    income: stats.income,
+    expense: stats.expense,
   }));
   
   return result.sort((a, b) => a.day - b.day);

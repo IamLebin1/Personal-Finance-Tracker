@@ -1,7 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { getSpendingByCategory, getSpendingByDate, getWeeklySpending, formatCurrency, type CategorySpending, type DaySpending } from '../services/transactionService';
 import { getAuthSession } from '../services/authSession';
+import { getTransactionsByUser } from '../services/transactionApi';
+import type { Transaction } from '../types/transaction';
 
 const CATEGORY_COLORS = ['#3554ff', '#7849ff', '#ff4a7f', '#ffb359', '#00d4aa', '#ff6b9d', '#a78bfa', '#60a5fa'];
 
@@ -9,14 +12,11 @@ export default function Analytics() {
   const [weeklySpending, setWeeklySpending] = useState<number>(0);
   const [categorySpending, setCategorySpending] = useState<CategorySpending[]>([]);
   const [daySpending, setDaySpending] = useState<DaySpending[]>([]);
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  useEffect(() => {
-    loadAnalytics();
-  }, [currentMonth]);
-
-  const loadAnalytics = async () => {
+  const loadAnalytics = useCallback(async () => {
     try {
       setLoading(true);
       const userId = getAuthSession()?.userId || '';
@@ -24,24 +24,33 @@ export default function Analytics() {
         setWeeklySpending(0);
         setCategorySpending([]);
         setDaySpending([]);
+        setRecentTransactions([]);
         return;
       }
 
-      const [weekly, categories, dayData] = await Promise.all([
+      const [weekly, categories, dayData, transactions] = await Promise.all([
         getWeeklySpending(userId),
         getSpendingByCategory(userId),
         getSpendingByDate(userId, currentMonth),
+        getTransactionsByUser(userId),
       ]);
       
       setWeeklySpending(weekly);
       setCategorySpending(categories);
       setDaySpending(dayData);
+      setRecentTransactions(transactions.slice(0, 10));
     } catch (error) {
       console.error('Failed to load analytics:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentMonth]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadAnalytics();
+    }, [loadAnalytics])
+  );
 
   const getCategoryColor = (index: number): string => {
     return CATEGORY_COLORS[index % CATEGORY_COLORS.length];
@@ -58,28 +67,35 @@ export default function Analytics() {
   const renderCalendarDays = () => {
     const daysInMonth = getDaysInMonth(currentMonth);
     const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
-    const dayMap = new Map(daySpending.map(d => [d.day, d.amount]));
+    const dayMap = new Map(daySpending.map(d => [d.day, d]));
     
     const days = [];
     
-    // Empty cells for days before month starts
     for (let i = 0; i < firstDay; i++) {
       days.push(<View key={`empty-${i}`} style={styles.calendarDay} />);
     }
     
-    // Days of month
     for (let day = 1; day <= daysInMonth; day++) {
-      const amount = dayMap.get(day);
-      const hasSpending = amount !== undefined && amount > 0;
+      const stats = dayMap.get(day);
+      const isSurplus = stats && stats.income > stats.expense;
+      const isExpense = stats && stats.expense > stats.income;
+      const hasActivity = isSurplus || isExpense;
       
       days.push(
-        <View key={day} style={[styles.calendarDay, hasSpending && styles.calendarDayActive]}>
-          <Text style={[styles.calendarDayNumber, hasSpending && styles.calendarDayNumberActive]}>
+        <View 
+          key={day} 
+          style={[
+            styles.calendarDay, 
+            isSurplus && styles.calendarDaySurplus,
+            isExpense && styles.calendarDayExpense
+          ]}
+        >
+          <Text style={[styles.calendarDayNumber, hasActivity && styles.calendarDayNumberActive]}>
             {day}
           </Text>
-          {hasSpending && (
+          {hasActivity && (
             <Text style={styles.calendarDayAmount}>
-              {formatCurrency(amount || 0).replace('$', '')}
+              {formatCurrency(isSurplus ? (stats?.income || 0) - (stats?.expense || 0) : (stats?.expense || 0)).replace('$', '')}
             </Text>
           )}
         </View>
@@ -89,93 +105,111 @@ export default function Analytics() {
     return days;
   };
 
-  if (loading) {
-    return (
-      <View style={styles.screen}>
-        <Text style={styles.header}>Loading...</Text>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.header}>Financial Analytics</Text>
 
-        <View style={styles.weekCard}>
-          <Text style={styles.cardSub}>Weekly Spending</Text>
-          <Text style={styles.weekValue}>{formatCurrency(lastWeekSpending)}</Text>
-          <Text style={styles.trend}>{weekTrend} vs last week</Text>
+        {loading ? (
+          <ActivityIndicator size="large" color="#815fff" style={{ marginTop: 40 }} />
+        ) : (
+          <>
+            {/* 1. Trend Chart Section */}
+            <View style={styles.weekCard}>
+              <Text style={styles.cardSub}>Transaction Trend</Text>
+              <Text style={styles.weekValue}>{formatCurrency(lastWeekSpending)}</Text>
+              <Text style={styles.trend}>{weekTrend} vs last week</Text>
 
-          <View style={styles.fakeChart}>
-            <View style={[styles.point, { left: '8%', top: 44 }]} />
-            <View style={[styles.point, { left: '28%', top: 26 }]} />
-            <View style={[styles.point, { left: '48%', top: 34 }]} />
-            <View style={[styles.point, { left: '68%', top: 18 }]} />
-            <View style={[styles.point, { left: '88%', top: 29 }]} />
-          </View>
-        </View>
-
-        <View style={styles.monthCard}>
-          <View style={styles.monthHeader}>
-            <Text style={styles.monthTitle}>
-              {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
-            </Text>
-          </View>
-          <View style={styles.weekdaysRow}>
-            {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
-              <Text key={day} style={styles.weekdayLabel}>
-                {day}
-              </Text>
-            ))}
-          </View>
-          <View style={styles.calendarGrid}>
-            {renderCalendarDays()}
-          </View>
-        </View>
-
-        <View style={styles.breakdownCard}>
-          <Text style={styles.breakdownTitle}>Category Distribution</Text>
-
-          <View style={styles.ringWrap}>
-            <View style={styles.ringOuter}>
-              <View style={styles.ringInner}>
-                <Text style={styles.totalLabel}>Total</Text>
-                <Text style={styles.totalValue}>{formatCurrency(totalMonthlySpending)}</Text>
+              <View style={styles.fakeChart}>
+                <View style={[styles.trendLine, { height: 2, backgroundColor: '#815fff', width: '100%', top: 35, opacity: 0.3 }]} />
+                <View style={[styles.point, { left: '5%', top: 40 }]} />
+                <View style={[styles.point, { left: '20%', top: 25 }]} />
+                <View style={[styles.point, { left: '40%', top: 45 }]} />
+                <View style={[styles.point, { left: '60%', top: 15 }]} />
+                <View style={[styles.point, { left: '80%', top: 30 }]} />
+                <View style={[styles.point, { left: '95%', top: 20 }]} />
               </View>
             </View>
-          </View>
 
-          {categorySpending.slice(0, 3).map((category, index) => (
-            <View key={category.category} style={styles.legendRow}>
-              <View style={[styles.dot, { backgroundColor: getCategoryColor(index) }]} />
-              <Text style={styles.legendLabel}>{category.category}</Text>
-              <Text style={styles.legendPct}>{category.percentage.toFixed(1)}%</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.categoriesCard}>
-          <Text style={styles.categoriesTitle}>Categories Expenses</Text>
-          <Text style={styles.totalExpense}>-{formatCurrency(totalMonthlySpending)}</Text>
-          
-          {categorySpending.map((category, index) => (
-            <View key={category.category} style={styles.categoryItem}>
-              <View style={[styles.categoryIcon, { backgroundColor: getCategoryColor(index) }]}>
-                <Text style={styles.categoryIconText}>
-                  {category.category.charAt(0).toUpperCase()}
+            {/* 2. Calendar Section */}
+            <View style={styles.monthCard}>
+              <View style={styles.monthHeader}>
+                <Text style={styles.monthTitle}>
+                  {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
                 </Text>
               </View>
-              <View style={styles.categoryInfo}>
-                <Text style={styles.categoryName}>{category.category}</Text>
-                <Text style={styles.categoryPercent}>
-                  {category.percentage.toFixed(1)}% of total expenses
-                </Text>
+              <View style={styles.weekdaysRow}>
+                {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
+                  <Text key={day} style={styles.weekdayLabel}>
+                    {day}
+                  </Text>
+                ))}
               </View>
-              <Text style={styles.categoryAmount}>-{formatCurrency(category.amount)}</Text>
+              <View style={styles.calendarGrid}>
+                {renderCalendarDays()}
+              </View>
+              <View style={styles.calendarLegend}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#20ce8f' }]} />
+                  <Text style={styles.legendText}>Surplus</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#ff5a4a' }]} />
+                  <Text style={styles.legendText}>Expense</Text>
+                </View>
+              </View>
             </View>
-          ))}
-        </View>
+
+            {/* 3. Transaction List Section */}
+            <View style={styles.categoriesCard}>
+              <Text style={styles.categoriesTitle}>Recent Transactions</Text>
+              
+              {recentTransactions.map((tx) => (
+                <View key={tx.id} style={styles.categoryItem}>
+                  <View style={[styles.categoryIcon, { backgroundColor: tx.type === 'income' ? '#20ce8f20' : '#ff5a4a20' }]}>
+                    <Text style={[styles.categoryIconText, { color: tx.type === 'income' ? '#20ce8f' : '#ff5a4a' }]}>
+                      {tx.category.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.categoryInfo}>
+                    <Text style={styles.categoryName}>{tx.category}</Text>
+                    <Text style={styles.categoryPercent}>
+                      {new Date(tx.date).toLocaleDateString()} • {tx.note || 'No note'}
+                    </Text>
+                  </View>
+                  <Text style={[styles.categoryAmount, { color: tx.type === 'income' ? '#20ce8f' : '#ff5a4a' }]}>
+                    {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
+                  </Text>
+                </View>
+              ))}
+              
+              {recentTransactions.length === 0 && (
+                <Text style={styles.emptyText}>No transactions found for this period.</Text>
+              )}
+            </View>
+
+            <View style={[styles.breakdownCard, { marginTop: 12 }]}>
+              <Text style={styles.breakdownTitle}>Category Distribution</Text>
+
+              <View style={styles.ringWrap}>
+                <View style={styles.ringOuter}>
+                  <View style={styles.ringInner}>
+                    <Text style={styles.totalLabel}>Total</Text>
+                    <Text style={styles.totalValue}>{formatCurrency(totalMonthlySpending)}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {categorySpending.slice(0, 3).map((category, index) => (
+                <View key={category.category} style={styles.legendRow}>
+                  <View style={[styles.dot, { backgroundColor: getCategoryColor(index) }]} />
+                  <Text style={styles.legendLabel}>{category.category}</Text>
+                  <Text style={styles.legendPct}>{category.percentage.toFixed(1)}%</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -228,12 +262,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f1130',
     borderWidth: 1,
     borderColor: '#272a66',
+    overflow: 'hidden',
+  },
+  trendLine: {
+    position: 'absolute',
   },
   point: {
     position: 'absolute',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: '#815fff',
   },
   breakdownCard: {
@@ -343,8 +381,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 4,
   },
-  calendarDayActive: {
+  calendarDayExpense: {
     backgroundColor: '#ff5a4a',
+  },
+  calendarDaySurplus: {
+    backgroundColor: '#20ce8f',
   },
   calendarDayNumber: {
     color: '#8f95ca',
@@ -359,6 +400,26 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '700',
   },
+  calendarLegend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 10,
+    gap: 15,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    color: '#8f95ca',
+    fontSize: 10,
+  },
   categoriesCard: {
     borderRadius: 18,
     borderWidth: 1,
@@ -370,7 +431,7 @@ const styles = StyleSheet.create({
     color: '#f0f2ff',
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   totalExpense: {
     color: '#ff5a4a',
@@ -395,7 +456,6 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   categoryIconText: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
   },
@@ -413,9 +473,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   categoryAmount: {
-    color: '#ff5a4a',
     fontSize: 13,
     fontWeight: '700',
   },
+  emptyText: {
+    color: '#8f95ca',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 20,
+    marginBottom: 20,
+  },
 });
+
 
