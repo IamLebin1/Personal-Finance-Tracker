@@ -49,19 +49,32 @@ In accordance with the assignment specifications, the final submission will incl
 ---
 
 ## Setup Instructions
-1. Clone the repository:
+1. Clone and enter the project:
    ```bash
-   git clone [https://github.com/iamLebin1/Personal-Finance-Tracker.git](https://github.com/iamLebin1/Personal-Finance-Tracker.git)
+   git clone https://github.com/iamLebin1/Personal-Finance-Tracker.git
+   cd Personal-Finance-Tracker
    ```
 
 2. Install dependencies:
     ```bash
-    npm install
+    npm install --legacy-peer-deps
     ```
-3. Run the application:
+
+3. Create your local app config (required):
+    ```bash
+    copy config\appConfig.example.ts config\appConfig.ts
+    ```
+    *Note: `config/appConfig.ts` is gitignored, so each developer must create their own local copy.*
+
+4. Edit `config/appConfig.ts` for your environment:
+    - `APP_MODE` (for example: `local`)
+    - `SQLITE_DB_NAME` (for example: `finance_tracker.sqlite`)
+    - `SQLITE_SEED_DEMO` (`true` or `false`)
+    - `API_BASE_URL` (if using backend mode)
+
+5. Run the application:
     ```bash
     npx react-native run-android
-    bash
     ```
 
 This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
