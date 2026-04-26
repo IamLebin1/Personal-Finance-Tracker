@@ -468,6 +468,36 @@ app.put('/api/auth/profile', requireAuth, (req, res) => {
   );
 });
 
+// Profile - Change Password
+app.post('/api/auth/change-password', requireAuth, (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: 'Both current and new passwords are required' });
+  }
+
+  const db = openDb();
+  db.get('SELECT password FROM users WHERE id = ?', [req.auth.userId], (err, row) => {
+    if (err || !row) {
+      closeDb(db);
+      return res.status(500).json({ message: 'Database error' });
+    }
+
+    if (!verifyPassword(currentPassword, row.password)) {
+      closeDb(db);
+      return res.status(401).json({ message: 'Incorrect current password' });
+    }
+
+    const hashedNew = hashPassword(newPassword);
+    db.run('UPDATE users SET password = ? WHERE id = ?', [hashedNew, req.auth.userId], function(updateErr) {
+      closeDb(db);
+      if (updateErr) {
+        return res.status(500).json({ message: 'Failed to update password' });
+      }
+      res.json({ ok: true });
+    });
+  });
+});
+
 // Forgot password
 app.post('/api/auth/forgot-password', (req, res) => {
   const { username } = req.body || {};

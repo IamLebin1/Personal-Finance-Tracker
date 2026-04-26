@@ -7,7 +7,8 @@ import {
   View, 
   Alert, 
   ActivityIndicator,
-  StatusBar
+  StatusBar,
+  InteractionManager
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { config } from '../config/appConfig';
@@ -15,11 +16,20 @@ import { clearAuthSession, getAuthSession } from '../services/authSession';
 import { getTransactionsByUser } from '../services/transactionApi';
 import { formatCurrency } from '../services/transactionService';
 
-const settingsRows = [
+const accountRows = [
   { id: 'details', icon: '👤', title: 'Personal Details', subtitle: 'Name, Email, Phone' },
   { id: 'security', icon: '🔒', title: 'Security & Credentials', subtitle: 'Password, 2FA, FaceID' },
-  { id: 'notifications', icon: '🔔', title: 'Notification Preferences', subtitle: 'Alerts, Reminders' },
-  { id: 'subscription', icon: '💳', title: 'Subscription', subtitle: 'Manage plan & billing' },
+];
+
+const generalRows = [
+  { id: 'notifications', icon: '🔔', title: 'Notifications', subtitle: 'Alerts, Reminders' },
+  { id: 'currency', icon: '💵', title: 'Default Currency', subtitle: 'USD ($)' },
+  { id: 'language', icon: '🌐', title: 'Language', subtitle: 'English' },
+];
+
+const supportRows = [
+  { id: 'help', icon: '🙋', title: 'Help & Support', subtitle: 'FAQ, Contact us' },
+  { id: 'privacy', icon: '🛡️', title: 'Privacy Policy', subtitle: 'Data usage & terms' },
 ];
 
 export default function Profile() {
@@ -28,29 +38,35 @@ export default function Profile() {
   const [stats, setStats] = useState({ count: 0, totalIncome: 0, totalExpense: 0 });
   const session = getAuthSession();
 
-  const loadProfileStats = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const txs = await getTransactionsByUser();
-      const income = txs.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-      const expense = txs.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-      setStats({
-        count: txs.length,
-        totalIncome: income,
-        totalExpense: expense
-      });
-    } catch (error) {
-      console.error('Failed to load profile stats:', error);
-    } finally {
-      setIsLoading(false);
-    }
+  const loadProfileStats = useCallback(() => {
+    let isMounted = true;
+    const task = InteractionManager.runAfterInteractions(async () => {
+      try {
+        const txs = await getTransactionsByUser();
+        const income = txs.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+        const expense = txs.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+        if (isMounted) {
+          setStats({
+            count: txs.length,
+            totalIncome: income,
+            totalExpense: expense
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load profile stats:', error);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    });
+
+    setIsLoading(true);
+    return () => {
+      isMounted = false;
+      task.cancel();
+    };
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadProfileStats();
-    }, [loadProfileStats])
-  );
+  useFocusEffect(loadProfileStats);
 
   const handleSignOut = () => {
     Alert.alert(
@@ -84,9 +100,11 @@ export default function Profile() {
     );
   };
 
-  const handleRowPress = (item: typeof settingsRows[0]) => {
+  const handleRowPress = (item: any) => {
     if (item.id === 'details') {
       navigation.navigate('ProfileDetails' as never);
+    } else if (item.id === 'security') {
+      navigation.navigate('SecuritySettings' as never);
     } else {
       Alert.alert(item.title, `The ${item.title.toLowerCase()} feature will be available in the next update.`);
     }
@@ -95,11 +113,35 @@ export default function Profile() {
   const displayName = session?.username || 'User';
   const profileInitial = displayName.trim().charAt(0).toUpperCase() || 'U';
 
+  const renderSection = (title: string, rows: any[]) => (
+    <>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionCard}>
+        {rows.map((row, idx) => (
+          <Pressable 
+            key={row.id} 
+            style={[styles.rowItem, idx === rows.length - 1 && styles.rowItemLast]} 
+            onPress={() => handleRowPress(row)}
+          >
+            <View style={styles.rowIconBg}>
+              <Text style={styles.rowIcon}>{row.icon}</Text>
+            </View>
+            <View style={styles.rowTextWrap}>
+              <Text style={styles.rowTitle}>{row.title}</Text>
+              <Text style={styles.rowSubtitle}>{row.subtitle}</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        ))}
+      </View>
+    </>
+  );
+
   return (
     <View style={styles.screen}>
       <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.header}>My Profile</Text>
+        <Text style={styles.header}>Settings</Text>
 
         <View style={styles.profileCard}>
           <View style={styles.avatarWrap}>
@@ -127,19 +169,9 @@ export default function Profile() {
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Preferences</Text>
-        {settingsRows.map(row => (
-          <Pressable key={row.id} style={styles.rowCard} onPress={() => handleRowPress(row)}>
-            <View style={styles.rowIconBg}>
-              <Text style={styles.rowIcon}>{row.icon}</Text>
-            </View>
-            <View style={styles.rowTextWrap}>
-              <Text style={styles.rowTitle}>{row.title}</Text>
-              <Text style={styles.rowSubtitle}>{row.subtitle}</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        ))}
+        {renderSection('Account', accountRows)}
+        {renderSection('General', generalRows)}
+        {renderSection('Support', supportRows)}
 
         <Pressable style={styles.signOutWrap} onPress={handleSignOut}>
           <Text style={styles.signOut}>Sign Out</Text>
@@ -163,7 +195,7 @@ const styles = StyleSheet.create({
     color: '#f4f6ff',
     fontSize: 28,
     fontWeight: '800',
-    textAlign: 'center',
+    textAlign: 'left',
     marginBottom: 24,
     letterSpacing: -0.5,
   },
@@ -230,7 +262,7 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     borderColor: '#232859',
-    marginBottom: 24,
+    marginBottom: 32,
   },
   statBox: {
     flex: 1,
@@ -255,34 +287,42 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: '#8a90c6',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 16,
+    letterSpacing: 1.2,
+    marginBottom: 12,
     marginLeft: 4,
   },
-  rowCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  sectionCard: {
     backgroundColor: '#16193b',
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: '#232859',
+    marginBottom: 24,
+    paddingHorizontal: 4,
+  },
+  rowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 14,
-    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#232859',
+  },
+  rowItemLast: {
+    borderBottomWidth: 0,
   },
   rowIconBg: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: '#232859',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
   },
   rowIcon: {
-    fontSize: 18,
+    fontSize: 16,
   },
   rowTextWrap: {
     flex: 1,
@@ -305,7 +345,8 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   signOutWrap: {
-    marginTop: 12,
+    marginTop: 8,
+    marginBottom: 40,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255, 77, 109, 0.3)',
@@ -320,3 +361,4 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 });
+

@@ -8,6 +8,7 @@ import RegisterScreen from '../screens/RegisterScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import TransactionDetail from '../screens/TransactionDetail';
 import ProfileDetails from '../screens/ProfileDetails';
+import SecuritySettings from '../screens/SecuritySettings';
 import type { Transaction } from '../types/transaction';
 import { loadAuthSession } from '../services/authSession';
 
@@ -19,6 +20,7 @@ export type RootStackParamList = {
   AddTransaction: { fromFab?: boolean; originX?: number; originY?: number } | undefined;
   TransactionDetail: { transaction: Transaction };
   ProfileDetails: undefined;
+  SecuritySettings: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -89,6 +91,11 @@ export default function RootStackNavigator() {
         name="ProfileDetails"
         component={ProfileDetails}
         options={{ title: 'Personal Details' }}
+      />
+      <Stack.Screen
+        name="SecuritySettings"
+        component={SecuritySettings}
+        options={{ title: 'Security' }}
       />
     </Stack.Navigator>
   );
