@@ -2,8 +2,9 @@ const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const crypto = require('crypto');
 
+const path = require('path');
 const app = express();
-const DB = 'finance_tracker.sqlite';
+const DB = path.join(__dirname, 'finance_tracker.sqlite');
 
 app.use(express.json());
 
@@ -486,7 +487,10 @@ app.get('/api/transactions', requireAuth, (req, res) => {
     [req.auth.userId],
     (err, rows) => {
       closeDb(db);
-      if (err) return res.status(500).json({ message: 'Database error' });
+      if (err) {
+        console.error('List Transactions Error:', err);
+        return res.status(500).json({ message: err.message || 'Database error', code: err.code });
+      }
       return res.status(200).json(rows);
     }
   );
@@ -510,22 +514,34 @@ app.get('/api/transactions/:id', requireAuth, (req, res) => {
 app.post('/api/transactions', requireAuth, (req, res) => {
   if (!req.body) return res.sendStatus(400);
 
-  const { amount, type, category, date, note, receiptUrl } = req.body;
+  const { amount, type, category, date, note, receiptUrl, accountId } = req.body;
   if (!amount || !type || !category || !date) {
     return res.status(400).json({ message: 'amount, type, category, date are required' });
   }
 
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const db = openDb();
 
   db.run(
-    `INSERT INTO transactions(id, amount, type, category, date, note, receiptUrl, userId)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, Number(amount), type, category, date, note || '', receiptUrl || '', req.auth.userId],
+    `INSERT INTO transactions(userId, accountId, amount, type, category, note, date, createdAt, receiptUrl)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      Number(req.auth.userId),
+      accountId != null ? Number(accountId) : null,
+      Number(amount),
+      type,
+      String(category).trim(),
+      note || '',
+      date,
+      new Date().toISOString(),
+      receiptUrl || '',
+    ],
     function onInsert(err) {
       closeDb(db);
-      if (err) return res.status(500).json({ message: 'Database error' });
-      return res.status(201).json({ id, affected: this.changes });
+      if (err) {
+        console.error('Insert Transaction Error:', err);
+        return res.status(500).json({ message: err.message || 'Database error', code: err.code });
+      }
+      return res.status(201).json({ id: String(this.lastID), affected: this.changes });
     }
   );
 });

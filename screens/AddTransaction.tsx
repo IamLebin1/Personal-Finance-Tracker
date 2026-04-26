@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import PagerView from 'react-native-pager-view';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { insertTransaction } from '../services/transactionApi';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { getAuthSession } from '../services/authSession';
+import type { TransactionType } from '../types/transaction';
 
 const categories = [
   { key: 'food', label: 'Food' },
@@ -27,49 +27,44 @@ type KeypadKey = {
   variant: KeypadVariant;
   action:
     | { type: 'input'; value: string }
+    | { type: 'operator'; value: '+' | '-' }
     | { type: 'delete' }
     | { type: 'clear' }
-    | { type: 'setType'; value: 'income' | 'expense' }
-    | { type: 'openCalendar' }
-    | { type: 'cycleCategory' }
-    | { type: 'save' };
+    | { type: 'setType'; value: TransactionType }
+    | { type: 'save' }
+    | { type: 'noop' };
 };
 
 const transactionTypeTabs = [
   { value: 'expense', label: 'Expense', emoji: '👛' },
   { value: 'income', label: 'Income', emoji: '💰' },
+  { value: 'transfer', label: 'Transfer', emoji: '🔄' },
 ] as const;
 
 const keypadRows: KeypadKey[][] = [
   [
-    { id: 'cat', label: 'CAT', variant: 'utility', action: { type: 'cycleCategory' } },
-    { id: 'today', label: 'TODAY', variant: 'utility', action: { type: 'openCalendar' } },
-    { id: 'quick-00', label: '+', variant: 'accent', action: { type: 'input', value: '00' } },
-    { id: 'ok', label: 'OK', variant: 'confirm', action: { type: 'save' } },
-  ],
-  [
-    { id: 'delete', label: 'x', variant: 'operator', action: { type: 'delete' } },
     { id: '7', label: '7', variant: 'number', action: { type: 'input', value: '7' } },
     { id: '8', label: '8', variant: 'number', action: { type: 'input', value: '8' } },
     { id: '9', label: '9', variant: 'number', action: { type: 'input', value: '9' } },
+    { id: 'delete', label: '⌫', variant: 'operator', action: { type: 'delete' } },
   ],
   [
-    { id: 'clear-op', label: '/', variant: 'operator', action: { type: 'clear' } },
     { id: '4', label: '4', variant: 'number', action: { type: 'input', value: '4' } },
     { id: '5', label: '5', variant: 'number', action: { type: 'input', value: '5' } },
     { id: '6', label: '6', variant: 'number', action: { type: 'input', value: '6' } },
+    { id: 'clear-op', label: 'C', variant: 'danger', action: { type: 'clear' } },
   ],
   [
-    { id: 'expense', label: '-', variant: 'operator', action: { type: 'setType', value: 'expense' } },
     { id: '1', label: '1', variant: 'number', action: { type: 'input', value: '1' } },
     { id: '2', label: '2', variant: 'number', action: { type: 'input', value: '2' } },
     { id: '3', label: '3', variant: 'number', action: { type: 'input', value: '3' } },
+    { id: 'plus', label: '+', variant: 'operator', action: { type: 'operator', value: '+' } },
   ],
   [
-    { id: 'income', label: '+', variant: 'operator', action: { type: 'setType', value: 'income' } },
-    { id: 'dot', label: '.', variant: 'number', action: { type: 'input', value: '0' } },
+    { id: 'dot', label: '.', variant: 'number', action: { type: 'input', value: '.' } },
     { id: '0', label: '0', variant: 'number', action: { type: 'input', value: '0' } },
-    { id: 'clear', label: 'X', variant: 'danger', action: { type: 'delete' } },
+    { id: 'minus', label: '-', variant: 'operator', action: { type: 'operator', value: '-' } },
+    { id: 'ok', label: '✓', variant: 'confirm', action: { type: 'save' } },
   ],
 ];
 
@@ -84,10 +79,18 @@ function isSameDay(a: Date, b: Date): boolean {
 }
 
 function formatSafeAmount(digits: string): { display: string; value: number } {
-  const normalized = digits.replace(/\D/g, '');
+  const normalized = digits.replace(/[^\d.]/g, '');
 
   if (!normalized) {
     return { display: '0.00', value: 0 };
+  }
+
+  // If it's just digits, we treat it as cents-based input like before or literal?
+  // Let's stick to literal decimal for a more "standard" calculator feel if we have a dot.
+  if (normalized.includes('.')) {
+      const parts = normalized.split('.');
+      const display = parts[0] + '.' + (parts[1] || '').slice(0, 2);
+      return { display, value: parseFloat(display) || 0 };
   }
 
   const padded = normalized.padStart(3, '0');
@@ -97,17 +100,21 @@ function formatSafeAmount(digits: string): { display: string; value: number } {
   return { display, value };
 }
 
+function formatFixedMoney(value: number): string {
+  if (!Number.isFinite(value)) return '0.00';
+  return value.toFixed(2);
+}
+
 export default function AddTransaction({ navigation, route }: Props) {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(categories[0]?.key ?? 'food');
-  const [transactionType, setTransactionType] = useState<'income' | 'expense'>('expense');
+  const [transactionType, setTransactionType] = useState<TransactionType>('expense');
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
+  const [isCalculatorVisible, setIsCalculatorVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [isSaving, setIsSaving] = useState(false);
-  const pagerRef = useRef<PagerView>(null);
-  const activePageIndex = transactionType === 'income' ? 1 : 0;
 
   const fromFab = Boolean(route.params?.fromFab);
   const windowSize = Dimensions.get('window');
@@ -126,6 +133,21 @@ export default function AddTransaction({ navigation, route }: Props) {
   const burstOpacity = useRef(new Animated.Value(fromFab ? 0.92 : 0)).current;
   const contentOpacity = useRef(new Animated.Value(fromFab ? 0 : 1)).current;
   const contentScale = useRef(new Animated.Value(fromFab ? 0.95 : 1)).current;
+
+  const [calcAccumulator, setCalcAccumulator] = useState<number | null>(null);
+  const [calcOperator, setCalcOperator] = useState<'+' | '-' | null>(null);
+
+  useEffect(() => {
+    if (!isCalculatorVisible) {
+      setCalcAccumulator(null);
+      setCalcOperator(null);
+      return;
+    }
+
+    // When opening the calculator, treat the current amount as the starting entry.
+    setCalcAccumulator(null);
+    setCalcOperator(null);
+  }, [isCalculatorVisible]);
 
   useEffect(() => {
     if (!fromFab) {
@@ -162,11 +184,14 @@ export default function AddTransaction({ navigation, route }: Props) {
     ]).start();
   }, [burstOpacity, burstScale, contentOpacity, contentScale, fromFab, spreadScaleTarget]);
 
-  useEffect(() => {
-    pagerRef.current?.setPage(activePageIndex);
-  }, [activePageIndex]);
-
   const { display: displayAmount, value: parsedAmount } = useMemo(() => formatSafeAmount(amount), [amount]);
+
+  const calculatorExpression = useMemo(() => {
+    if (calcAccumulator === null && calcOperator === null) return '';
+    const left = formatFixedMoney(calcAccumulator ?? 0);
+    if (!calcOperator) return left;
+    return `${left} ${calcOperator}`;
+  }, [calcAccumulator, calcOperator]);
 
   const monthLabel = useMemo(
     () =>
@@ -195,42 +220,91 @@ export default function AddTransaction({ navigation, route }: Props) {
 
   const onKeypadTap = (key: KeypadKey) => {
     if (key.action.type === 'delete') {
-      setAmount(prev => prev.slice(0, -1));
+      setAmount(prev => {
+        if (prev.length > 0) return prev.slice(0, -1);
+        if (calcOperator) {
+          setCalcOperator(null);
+          return prev;
+        }
+        if (calcAccumulator !== null) {
+          setCalcAccumulator(null);
+          return prev;
+        }
+        return prev;
+      });
       return;
     }
 
     if (key.action.type === 'clear') {
       setAmount('');
-      return;
-    }
-
-    if (key.action.type === 'setType') {
-      setTransactionType(key.action.value);
-      return;
-    }
-
-    if (key.action.type === 'openCalendar') {
-      setCalendarMonth(startOfMonth(selectedDate));
-      setIsCalendarVisible(true);
-      return;
-    }
-
-    if (key.action.type === 'cycleCategory') {
-      const currentIndex = categories.findIndex(item => item.key === selectedCategory);
-      const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % categories.length;
-      setSelectedCategory(categories[nextIndex].key);
+      setCalcAccumulator(null);
+      setCalcOperator(null);
       return;
     }
 
     if (key.action.type === 'save') {
+      setIsCalculatorVisible(false);
+
+      // Compute the final number synchronously and pass it to onSave(),
+      // since setAmount(...) won't update parsedAmount until the next render.
+      if (calcOperator && calcAccumulator !== null) {
+        const { value: rightValue } = formatSafeAmount(amount);
+        const nextValue = calcOperator === '+' ? calcAccumulator + rightValue : calcAccumulator - rightValue;
+        const finalValue = Math.max(0, nextValue);
+        setAmount(formatFixedMoney(finalValue));
+        setCalcAccumulator(null);
+        setCalcOperator(null);
+        void onSave(finalValue);
+        return;
+      }
+
+      if (calcAccumulator !== null && !amount) {
+        const finalValue = Math.max(0, calcAccumulator);
+        setAmount(formatFixedMoney(finalValue));
+        setCalcAccumulator(null);
+        setCalcOperator(null);
+        void onSave(finalValue);
+        return;
+      }
+
       void onSave();
+      return;
+    }
+
+    if (key.action.type === 'operator') {
+      const op = key.action.value;
+      const { value: entryValue } = formatSafeAmount(amount);
+
+      if (calcAccumulator === null) {
+        setCalcAccumulator(entryValue);
+        setCalcOperator(op);
+        setAmount('');
+        return;
+      }
+
+      if (!calcOperator) {
+        setCalcOperator(op);
+        setAmount('');
+        return;
+      }
+
+      if (!amount) {
+        setCalcOperator(op);
+        return;
+      }
+
+      const nextValue = calcOperator === '+' ? calcAccumulator + entryValue : calcAccumulator - entryValue;
+      setCalcAccumulator(nextValue);
+      setCalcOperator(op);
+      setAmount('');
       return;
     }
 
     if (key.action.type === 'input') {
       const inputValue = key.action.value;
       setAmount(prev => {
-        const next = (prev + inputValue).replace(/\D/g, '');
+        if (inputValue === '.' && prev.includes('.')) return prev;
+        const next = (prev + inputValue).replace(/[^\d.]/g, '');
         if (next.length > 11) {
           return prev;
         }
@@ -240,80 +314,9 @@ export default function AddTransaction({ navigation, route }: Props) {
     }
   };
 
-  const renderTransactionPage = (pageType: 'expense' | 'income') => {
-    const isExpense = pageType === 'expense';
-
-    return (
-      <View style={styles.pageScrollContent}>
-        <View style={[styles.pageHero, isExpense ? styles.pageHeroExpense : styles.pageHeroIncome]}>
-          <Text style={styles.pageHeroEmoji}>{isExpense ? '👛' : '💰'}</Text>
-          <View style={styles.pageHeroTextWrap}>
-            <Text style={styles.pageHeroTitle}>{isExpense ? 'Expense' : 'Income'}</Text>
-            <Text style={styles.pageHeroSubtitle}>
-              {isExpense ? 'Track money going out' : 'Track money coming in'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.amountWrap}>
-          <Text style={styles.currency}>$</Text>
-          <TextInput
-            value={displayAmount}
-            placeholder="0.00"
-            placeholderTextColor="#737aa8"
-            editable={false}
-            showSoftInputOnFocus={false}
-            style={styles.amountInput}
-          />
-        </View>
-
-        <View style={styles.noteBox}>
-          <TextInput
-            value={note}
-            onChangeText={setNote}
-            placeholder="Add note (optional)"
-            placeholderTextColor="#7780b2"
-            style={styles.noteInput}
-          />
-        </View>
-
-        <Pressable
-          style={styles.dateRow}
-          onPress={() => {
-            setCalendarMonth(startOfMonth(selectedDate));
-            setIsCalendarVisible(true);
-          }}
-        >
-          <Text style={styles.dateLabel}>Transaction Date</Text>
-          <Text style={styles.dateValue}>
-            {selectedDate.toLocaleDateString('en-US', {
-              weekday: 'short',
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            })}
-          </Text>
-        </Pressable>
-
-        <View style={styles.categoryWrap}>
-          {categories.map(item => (
-            <Pressable
-              key={item.key}
-              style={[styles.categoryChip, selectedCategory === item.key ? styles.categoryActive : null]}
-              onPress={() => setSelectedCategory(item.key)}
-            >
-              <Text style={[styles.categoryChipText, selectedCategory === item.key ? styles.categoryChipTextActive : null]}>
-                {item.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-    );
-  };
-
-  const onSave = async () => {
-    if (!amount.trim() || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+  const onSave = async (overrideAmount?: number) => {
+    const amountToSave = overrideAmount ?? parsedAmount;
+    if (amountToSave <= 0) {
       Alert.alert('Invalid amount', 'Please enter a valid amount greater than 0.');
       return;
     }
@@ -331,7 +334,7 @@ export default function AddTransaction({ navigation, route }: Props) {
       saveDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), 0);
 
       await insertTransaction({
-        amount: parsedAmount,
+        amount: amountToSave,
         type: transactionType,
         category: selectedCategory,
         date: saveDate.toISOString(),
@@ -341,8 +344,8 @@ export default function AddTransaction({ navigation, route }: Props) {
       });
 
       navigation.goBack();
-    } catch {
-      Alert.alert('Save failed', 'Could not save transaction. Please try again.');
+    } catch (err: any) {
+      Alert.alert('Save failed', err.message || 'Could not save transaction. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -386,78 +389,113 @@ export default function AddTransaction({ navigation, route }: Props) {
             })}
           </View>
 
-          <Pressable style={styles.confirmWrap} onPress={onSave} disabled={isSaving}>
+          <Pressable style={styles.confirmWrap} onPress={() => void onSave()} disabled={isSaving}>
             <Text style={styles.confirmText}>✓</Text>
           </Pressable>
         </View>
 
-        <View style={styles.pagerArea}>
-          <PagerView
-            ref={pagerRef}
-            style={styles.pager}
-            initialPage={0}
-            onPageSelected={event => {
-              setTransactionType(event.nativeEvent.position === 1 ? 'income' : 'expense');
-            }}
-          >
-            <ScrollView key="expense" style={styles.page} contentContainerStyle={styles.pageScrollContainer} showsVerticalScrollIndicator={false}>
-              {renderTransactionPage('expense')}
-            </ScrollView>
-            <ScrollView key="income" style={styles.page} contentContainerStyle={styles.pageScrollContainer} showsVerticalScrollIndicator={false}>
-              {renderTransactionPage('income')}
-            </ScrollView>
-          </PagerView>
-        </View>
+        <ScrollView style={styles.contentScroll} contentContainerStyle={styles.contentScrollContainer} showsVerticalScrollIndicator={false}>
+          <Pressable style={styles.amountWrap} onPress={() => setIsCalculatorVisible(true)}>
+            <Text style={styles.currency}>$</Text>
+            <Text style={styles.amountText}>{displayAmount}</Text>
+          </Pressable>
 
-        <View style={styles.footerArea}>
-          <View style={styles.keypadWrap}>
-            {keypadRows.map(row =>
-              row.map(key => {
-                const isIconStyle = key.variant === 'accent' || key.variant === 'confirm' || key.variant === 'danger';
-
-                return (
-                  <Pressable
-                    key={key.id}
-                    style={[
-                      styles.keypadButton,
-                      key.variant === 'operator' ? styles.keypadOperatorButton : null,
-                      key.variant === 'utility' ? styles.keypadUtilityButton : null,
-                      key.variant === 'danger' ? styles.keypadDangerButton : null,
-                    ]}
-                    onPress={() => onKeypadTap(key)}
-                  >
-                    {isIconStyle ? (
-                      <View
-                        style={[
-                          styles.iconBubble,
-                          key.variant === 'accent' ? styles.iconBubbleAccent : null,
-                          key.variant === 'confirm' ? styles.iconBubbleConfirm : null,
-                          key.variant === 'danger' ? styles.iconBubbleDanger : null,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.iconBubbleText,
-                            key.variant === 'danger' ? styles.iconBubbleTextDanger : null,
-                          ]}
-                        >
-                          {key.label}
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text style={[styles.keypadButtonText, key.variant === 'utility' ? styles.keypadUtilityText : null]}>
-                        {key.label}
-                      </Text>
-                    )}
-                  </Pressable>
-                );
-              }),
-            )}
+          <View style={styles.noteBox}>
+            <TextInput
+              value={note}
+              onChangeText={setNote}
+              placeholder="Add note (optional)"
+              placeholderTextColor="#7780b2"
+              style={styles.noteInput}
+            />
           </View>
 
-          <View style={styles.homeIndicator} />
-        </View>
+          <Pressable
+            style={styles.dateRow}
+            onPress={() => {
+              setCalendarMonth(startOfMonth(selectedDate));
+              setIsCalendarVisible(true);
+            }}
+          >
+            <Text style={styles.dateLabel}>Transaction Date</Text>
+            <Text style={styles.dateValue}>
+              {selectedDate.toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+            </Text>
+          </Pressable>
+
+          <View style={styles.categoryWrap}>
+            {categories.map(item => (
+              <Pressable
+                key={item.key}
+                style={[styles.categoryChip, selectedCategory === item.key ? styles.categoryActive : null]}
+                onPress={() => setSelectedCategory(item.key)}
+              >
+                <Text style={[styles.categoryChipText, selectedCategory === item.key ? styles.categoryChipTextActive : null]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
       </Animated.View>
+
+      {/* Calculator Modal */}
+      <Modal visible={isCalculatorVisible} transparent animationType="slide" onRequestClose={() => setIsCalculatorVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setIsCalculatorVisible(false)}>
+          <View style={styles.calculatorCard} onStartShouldSetResponder={() => true}>
+            <View style={styles.calculatorHandle} />
+            <View style={styles.calculatorAmountDisplay}>
+              <Text style={styles.calculatorCurrency}>$</Text>
+              <View style={styles.calculatorAmountColumn}>
+                {calculatorExpression ? <Text style={styles.calculatorExpressionText}>{calculatorExpression}</Text> : null}
+                <Text style={styles.calculatorAmountText}>{displayAmount}</Text>
+              </View>
+            </View>
+            <View style={styles.keypadWrap}>
+              {keypadRows.map(row =>
+                row.map(key => {
+                  const isIconStyle = key.variant === 'confirm' || key.variant === 'danger';
+
+                  return (
+                    <Pressable
+                      key={key.id}
+                      style={[
+                        styles.keypadButton,
+                        key.variant === 'operator' ? styles.keypadOperatorButton : null,
+                        key.variant === 'utility' ? styles.keypadUtilityButton : null,
+                        key.variant === 'danger' ? styles.keypadDangerButton : null,
+                        key.variant === 'confirm' ? styles.keypadConfirmButton : null,
+                      ]}
+                      onPress={() => onKeypadTap(key)}
+                    >
+                      {isIconStyle ? (
+                        <View
+                          style={[
+                            styles.iconBubble,
+                            key.variant === 'confirm' ? styles.iconBubbleConfirm : null,
+                            key.variant === 'danger' ? styles.iconBubbleDanger : null,
+                          ]}
+                        >
+                          <Text style={styles.iconBubbleText}>{key.label}</Text>
+                        </View>
+                      ) : (
+                        <Text style={[styles.keypadButtonText, key.variant === 'operator' ? styles.keypadOperatorText : null]}>
+                          {key.label}
+                        </Text>
+                      )}
+                    </Pressable>
+                  );
+                }),
+              )}
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
 
       <Modal visible={isCalendarVisible} transparent animationType="fade" onRequestClose={() => setIsCalendarVisible(false)}>
         <View style={styles.calendarOverlay}>
@@ -531,7 +569,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0b0d22',
     paddingTop: 50,
-    paddingHorizontal: 16,
   },
   burstCircle: {
     position: 'absolute',
@@ -544,29 +581,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 24,
+    paddingHorizontal: 16,
   },
   typeTabsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
-    marginHorizontal: 10,
+    marginHorizontal: 4,
   },
   typeTab: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#31376e',
     backgroundColor: '#161a45',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginHorizontal: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginHorizontal: 2,
   },
   typeTabActive: {
     borderColor: '#8a75ff',
     backgroundColor: '#6e57ff',
+    shadowColor: '#6e57ff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   typeTabEmoji: {
     fontSize: 16,
@@ -592,54 +635,93 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  pagerArea: {
+  contentScroll: {
     flex: 1,
   },
-  pager: {
-    flex: 1,
+  contentScrollContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 40,
   },
-  page: {
-    flex: 1,
-  },
-  pageScrollContainer: {
-    paddingBottom: 12,
-  },
-  pageScrollContent: {
-    flexGrow: 1,
-  },
-  pageHero: {
+  amountWrap: {
     flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    marginBottom: 12,
+    justifyContent: 'center',
+    alignItems: 'baseline',
+    marginBottom: 24,
+    marginTop: 10,
+    paddingVertical: 20,
+    backgroundColor: 'rgba(23, 27, 70, 0.4)',
+    borderRadius: 20,
   },
-  pageHeroExpense: {
-    backgroundColor: '#171b46',
-    borderColor: '#32376f',
-  },
-  pageHeroIncome: {
-    backgroundColor: '#171b46',
-    borderColor: '#32376f',
-  },
-  pageHeroEmoji: {
-    fontSize: 20,
+  currency: {
+    color: '#6f5dff',
+    fontSize: 44,
     marginRight: 10,
-  },
-  pageHeroTextWrap: {
-    flex: 1,
-  },
-  pageHeroTitle: {
-    color: '#f5f7ff',
-    fontSize: 15,
     fontWeight: '700',
   },
-  pageHeroSubtitle: {
+  amountText: {
+    color: '#f8f9ff',
+    fontSize: 56,
+    fontWeight: '800',
+  },
+  noteBox: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#32376f',
+    backgroundColor: '#171b46',
+    paddingHorizontal: 12,
+    paddingVertical: 2,
+    marginBottom: 12,
+  },
+  noteInput: {
+    color: '#d7dcff',
+    fontSize: 14,
+    paddingVertical: 12,
+  },
+  dateRow: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#343978',
+    backgroundColor: '#161a43',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  dateLabel: {
     color: '#8f98d2',
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 10,
+    marginBottom: 2,
+    fontWeight: '600',
+  },
+  dateValue: {
+    color: '#f4f6ff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  categoryWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  categoryChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#363b74',
+    backgroundColor: '#1b1f4c',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+    marginBottom: 10,
+  },
+  categoryActive: {
+    backgroundColor: '#6f58ff',
+    borderColor: '#8b76ff',
+  },
+  categoryChipText: {
+    color: '#97a0dc',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  categoryChipTextActive: {
+    color: '#ffffff',
   },
   closeWrap: {
     width: 28,
@@ -655,186 +737,105 @@ const styles = StyleSheet.create({
     color: '#b3bae6',
     fontSize: 15,
   },
-  amountWrap: {
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(4, 6, 18, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  calculatorCard: {
+    backgroundColor: '#0f111d',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    padding: 20,
+    paddingBottom: 40,
+    borderTopWidth: 1,
+    borderTopColor: '#222533',
+  },
+  calculatorHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#3b417f',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  calculatorAmountDisplay: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'baseline',
-    marginBottom: 8,
+    marginBottom: 24,
   },
-  currency: {
-    color: '#6f5dff',
-    fontSize: 44,
-    marginRight: 10,
+  calculatorAmountColumn: {
+    alignItems: 'flex-start',
+  },
+  calculatorExpressionText: {
+    color: '#9aa4d6',
+    fontSize: 14,
     fontWeight: '700',
-  },
-  amountInput: {
-    color: '#f8f9ff',
-    fontSize: 44,
-    fontWeight: '800',
-    minWidth: 140,
-    paddingVertical: 0,
-    textAlign: 'left',
-  },
-  noteBox: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#32376f',
-    backgroundColor: '#171b46',
-    paddingHorizontal: 12,
-    paddingVertical: 2,
-    marginBottom: 10,
-  },
-  noteInput: {
-    color: '#d7dcff',
-    fontSize: 12,
-    paddingVertical: 10,
-  },
-  dateRow: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#343978',
-    backgroundColor: '#161a43',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 10,
-  },
-  dateLabel: {
-    color: '#8f98d2',
-    fontSize: 10,
-    marginBottom: 2,
-    fontWeight: '600',
-  },
-  dateValue: {
-    color: '#f4f6ff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  categoryWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     marginBottom: 6,
   },
-  categoryChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#363b74',
-    backgroundColor: '#1b1f4c',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    marginRight: 8,
-    marginBottom: 8,
+  calculatorCurrency: {
+    color: '#6f5dff',
+    fontSize: 32,
+    marginRight: 6,
+    fontWeight: '700',
   },
-  categoryActive: {
-    backgroundColor: '#6f58ff',
-    borderColor: '#8b76ff',
-  },
-  categoryChipText: {
-    color: '#97a0dc',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  categoryChipTextActive: {
+  calculatorAmountText: {
     color: '#ffffff',
+    fontSize: 44,
+    fontWeight: '800',
   },
   keypadWrap: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#31376e',
-    backgroundColor: '#131741',
-    padding: 8,
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginTop: 4,
   },
   keypadButton: {
-    width: '24%',
+    width: '23%',
     borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#3b417f',
-    backgroundColor: '#222957',
-    paddingVertical: 10,
+    backgroundColor: '#1a1d48',
+    paddingVertical: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 7,
-    minHeight: 52,
+    marginBottom: 10,
   },
   keypadButtonText: {
     color: '#f1f2f6',
-    fontSize: 15,
+    fontSize: 20,
     fontWeight: '700',
   },
   keypadOperatorButton: {
     backgroundColor: '#2b2e53',
-    borderColor: '#52588f',
   },
-  keypadUtilityButton: {
-    backgroundColor: '#262c5a',
-    borderColor: '#4f5693',
+  keypadOperatorText: {
+    color: '#a18aff',
+    fontSize: 24,
+  },
+  keypadConfirmButton: {
+    backgroundColor: '#6e57ff',
   },
   keypadDangerButton: {
     backgroundColor: '#3a1e30',
-    borderColor: '#81405d',
   },
-  keypadUtilityText: {
-    fontSize: 14,
+  keypadUtilityButton: {
+    backgroundColor: '#232756',
   },
   iconBubble: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-  },
-  iconBubbleAccent: {
-    backgroundColor: '#6f58ff',
-    borderColor: '#8b76ff',
   },
   iconBubbleConfirm: {
-    backgroundColor: '#7f5bff',
-    borderColor: '#9e89ff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   iconBubbleDanger: {
-    backgroundColor: '#a84f73',
-    borderColor: '#c87999',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   iconBubbleText: {
     color: '#ffffff',
     fontWeight: '800',
-    fontSize: 11,
-  },
-  iconBubbleTextDanger: {
-    color: '#fff4f8',
-  },
-  saveButton: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#8a75ff',
-    backgroundColor: '#6f53ff',
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 6,
-  },
-  saveButtonDisabled: {
-    opacity: 0.65,
-  },
-  saveText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  homeIndicator: {
-    alignSelf: 'center',
-    width: 86,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#5a608f',
-    marginTop: 12,
-  },
-  footerArea: {
-    paddingTop: 6,
+    fontSize: 20,
   },
   calendarOverlay: {
     flex: 1,

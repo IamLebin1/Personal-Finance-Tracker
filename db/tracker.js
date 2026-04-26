@@ -1,8 +1,9 @@
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 
+const path = require('path');
 const app = express();
-const DB = 'finance_tracker.sqlite';
+const DB = path.join(__dirname, 'finance_tracker.sqlite');
 
 // Middleware
 app.use(express.json());

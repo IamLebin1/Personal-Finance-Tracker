@@ -53,7 +53,7 @@ Personal Finance Tracker is a React Native app for tracking income, expenses, hi
 
 4. Edit `config/appConfig.ts` for your environment:
     - `APP_MODE` (for example: `local`)
-    - `SQLITE_DB_NAME` (for example: `finance_tracker.sqlite`)
+    - `SQLITE_DB_NAME` (for example: `db/finance_tracker.sqlite`)
     - `SQLITE_SEED_DEMO` (`true` or `false`)
     - `API_BASE_URL` (if using backend mode)
 
@@ -89,7 +89,7 @@ copy config\appConfig.example.ts config\appConfig.ts
 4. Edit `config/appConfig.ts` for your environment:
 
 - `APP_MODE` (for example: `local`)
-- `SQLITE_DB_NAME` (for example: `finance_tracker.sqlite`)
+- `SQLITE_DB_NAME` (for example: `db/finance_tracker.sqlite`)
 - `SQLITE_SEED_DEMO` (`true` or `false`)
 - `API_BASE_URL` (if using backend mode)
 
