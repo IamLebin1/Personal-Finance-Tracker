@@ -220,7 +220,7 @@ export default function Dashboard({ navigation }: { navigation: any }) {
                 </View>
               </View>
               <Text style={styles.balanceValue}>
-                {isLoading ? '...' : formatCurrency(totalBalance)}
+                {isLoading ? '...' : formatCurrency(totalBalance, true)}
               </Text>
             </View>
           </Animated.View>

@@ -362,10 +362,7 @@ export default function AddTransaction({ navigation, route }: Props) {
 
       <Animated.View style={{ opacity: contentOpacity, transform: [{ scale: contentScale }], flex: 1 }}>
         <View style={styles.topRow}>
-          <Pressable style={styles.closeWrap} onPress={() => navigation.goBack()}>
-            <Text style={styles.closeText}>x</Text>
-          </Pressable>
-
+          <View style={{ width: 44 }} />
           <View style={styles.typeTabsRow}>
             {transactionTypeTabs.map(tab => {
               const isActive = transactionType === tab.value;
@@ -383,8 +380,8 @@ export default function AddTransaction({ navigation, route }: Props) {
             })}
           </View>
 
-          <Pressable style={styles.confirmWrap} onPress={() => void onSave()} disabled={isSaving}>
-            <Text style={styles.confirmText}>✓</Text>
+          <Pressable style={styles.closeWrap} onPress={() => navigation.goBack()}>
+            <Text style={styles.closeText}>✕</Text>
           </Pressable>
         </View>
 
@@ -624,20 +621,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  confirmWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#2f356f',
-    backgroundColor: '#1a1d48',
+  closeWrap: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
-  confirmText: {
-    color: '#d6dcff',
-    fontSize: 16,
-    fontWeight: '700',
+  closeText: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: '200',
+    marginTop: -2,
   },
   contentScroll: {
     flex: 1,
@@ -726,20 +724,6 @@ const styles = StyleSheet.create({
   },
   categoryChipTextActive: {
     color: '#ffffff',
-  },
-  closeWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#2f356f',
-    backgroundColor: '#1a1d48',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeText: {
-    color: '#b3bae6',
-    fontSize: 15,
   },
   modalOverlay: {
     flex: 1,

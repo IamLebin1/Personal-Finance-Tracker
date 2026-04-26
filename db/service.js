@@ -75,7 +75,7 @@ function ensureTransactionColumns(db, onDone) {
       alterStatements.push('ALTER TABLE transactions ADD COLUMN receiptUrl TEXT');
     }
     if (!existingColumns.has('userId')) {
-      alterStatements.push("ALTER TABLE transactions ADD COLUMN userId TEXT NOT NULL DEFAULT 'demo-user'");
+      alterStatements.push("ALTER TABLE transactions ADD COLUMN userId INTEGER NOT NULL DEFAULT 1");
     }
 
     if (alterStatements.length === 0) {
@@ -136,7 +136,7 @@ function requireAuth(req, res, next) {
 
       req.auth = {
         token,
-        userId: String(row.userId),
+        userId: Number(row.userId), // Store as Number for consistent DB querying
         username: row.username,
       };
       return next();
@@ -182,14 +182,17 @@ function ensureTables(onDone) {
     // Transaction table
     db.run(`
       CREATE TABLE IF NOT EXISTS transactions (
-        id TEXT PRIMARY KEY NOT NULL,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
+        accountId INTEGER,
         amount REAL NOT NULL,
-        type TEXT NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('income', 'expense', 'transfer')),
         category TEXT NOT NULL,
+        note TEXT DEFAULT '',
         date TEXT NOT NULL,
-        note TEXT,
+        createdAt TEXT NOT NULL,
         receiptUrl TEXT,
-        userId TEXT NOT NULL
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
       )
     `);
 
@@ -207,7 +210,6 @@ function ensureTables(onDone) {
             ['demo-user', hashPassword('demo123'), 'demo@example.com', '+1234567890', new Date().toISOString()]
           );
         } else if (!err && row && row.total > 0) {
-          // Update demo user if it exists but might be missing email/phone from migration
           db.run(
             'UPDATE users SET email = ?, phone = ? WHERE username = ? AND (email IS NULL OR phone IS NULL)',
             ['demo@example.com', '+1234567890', 'demo-user']
@@ -230,74 +232,37 @@ function ensureTables(onDone) {
 function seedTransactions(onDone) {
   const db = openDb();
   db.get('SELECT COUNT(*) AS total FROM transactions', [], (err, row) => {
-    if (err) {
-      console.error(err.message);
+    if (err || (row && row.total > 0)) {
+      if (err) console.error(err.message);
       closeDb(db);
-      if (typeof onDone === 'function') {
-        onDone();
-      }
+      if (typeof onDone === 'function') onDone();
       return;
     }
 
-    if (row && row.total > 0) {
-      closeDb(db);
-      if (typeof onDone === 'function') {
-        onDone();
+    db.get('SELECT id FROM users LIMIT 1', [], (userErr, userRow) => {
+      if (userErr || !userRow) {
+        closeDb(db);
+        if (typeof onDone === 'function') onDone();
+        return;
       }
-      return;
-    }
 
-    const stmt = db.prepare(`
-      INSERT INTO transactions(id, amount, type, category, date, note, receiptUrl, userId)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+      const userId = userRow.id;
+      const stmt = db.prepare(`
+        INSERT INTO transactions(amount, type, category, date, note, receiptUrl, userId, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
 
-    stmt.run(
-      'seed-1', 4200, 'income', 'salary', '2026-04-04T08:30:00Z', 'Monthly salary', '', 'demo-user',
-      seedErr => {
-        if (seedErr) {
-          console.error(seedErr.message);
-        }
-      }
-    );
-    stmt.run(
-      'seed-2', 84.2, 'expense', 'groceries', '2026-04-04T11:45:00Z', 'Weekend grocery run', '', 'demo-user',
-      seedErr => {
-        if (seedErr) {
-          console.error(seedErr.message);
-        }
-      }
-    );
-    stmt.run(
-      'seed-3', 14.9, 'expense', 'transport', '2026-04-03T15:15:00Z', 'Grab ride', '', 'demo-user',
-      seedErr => {
-        if (seedErr) {
-          console.error(seedErr.message);
-        }
-      }
-    );
-    stmt.run(
-      'seed-4', 120.0, 'expense', 'utilities', '2026-04-02T09:00:00Z', 'Water bill', '', 'demo-user',
-      seedErr => {
-        if (seedErr) {
-          console.error(seedErr.message);
-        }
-      }
-    );
-    stmt.run(
-      'seed-5', 250.0, 'income', 'freelance', '2026-04-01T19:00:00Z', 'Side project payment', '', 'demo-user',
-      seedErr => {
-        if (seedErr) {
-          console.error(seedErr.message);
-        }
-      }
-    );
+      const now = new Date().toISOString();
+      stmt.run(4200, 'income', 'salary', '2026-04-04T08:30:00Z', 'Monthly salary', '', userId, now);
+      stmt.run(84.2, 'expense', 'groceries', '2026-04-04T11:45:00Z', 'Weekend grocery run', '', userId, now);
+      stmt.run(14.9, 'expense', 'transport', '2026-04-03T15:15:00Z', 'Grab ride', '', userId, now);
+      stmt.run(120.0, 'expense', 'utilities', '2026-04-02T09:00:00Z', 'Water bill', '', userId, now);
+      stmt.run(250.0, 'income', 'freelance', '2026-04-01T19:00:00Z', 'Side project payment', '', userId, now);
 
-    stmt.finalize(() => {
-      closeDb(db);
-      if (typeof onDone === 'function') {
-        onDone();
-      }
+      stmt.finalize(() => {
+        closeDb(db);
+        if (typeof onDone === 'function') onDone();
+      });
     });
   });
 }
@@ -324,380 +289,172 @@ ensureTables(() => {
   });
 });
 
-process.on('unhandledRejection', (err) => {
-  console.error('❌ Unhandled rejection:', err);
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('❌ Uncaught exception:', err);
-  process.exit(1);
-});
-
-// Register
+// Auth Endpoints
 app.post('/api/auth/register', (req, res) => {
   const { username, password, email, phone } = req.body || {};
-
-  if (!username || !password) {
-    return res.status(400).json({ message: 'username and password are required' });
-  }
+  if (!username || !password) return res.status(400).json({ message: 'username and password are required' });
 
   const db = openDb();
   db.run(
     'INSERT INTO users(username, password, email, phone, createdAt) VALUES (?, ?, ?, ?, ?)',
     [username.trim(), hashPassword(password), email, phone, new Date().toISOString()],
-    function onInsert(err) {
+    function(err) {
       closeDb(db);
       if (err) {
-        if (String(err.message || '').includes('UNIQUE')) {
-          return res.status(409).json({ message: 'username already exists' });
-        }
+        if (String(err.message).includes('UNIQUE')) return res.status(409).json({ message: 'username already exists' });
         return res.status(500).json({ message: 'Database error' });
       }
-
       return res.status(201).json({ id: this.lastID, username: username.trim() });
     }
   );
 });
 
-// Login
 app.post('/api/auth/login', (req, res) => {
   const { username, password } = req.body || {};
-
-  if (!username || !password) {
-    return res.status(400).json({ message: 'username and password are required' });
-  }
+  if (!username || !password) return res.status(400).json({ message: 'username and password are required' });
 
   const db = openDb();
-  db.get(
-    'SELECT id, username, password FROM users WHERE username = ?',
-    [username.trim()],
-    (err, row) => {
-      if (err) {
-        closeDb(db);
-        return res.status(500).json({ message: 'Database error' });
-      }
+  db.get('SELECT id, username, password FROM users WHERE username = ?', [username.trim()], (err, row) => {
+    if (err) { closeDb(db); return res.status(500).json({ message: 'Database error' }); }
+    if (!row || !verifyPassword(password, row.password)) { closeDb(db); return res.status(401).json({ message: 'Invalid credentials' }); }
 
-      if (!row || !verifyPassword(password, row.password)) {
-        closeDb(db);
-        return res.status(401).json({ message: 'Invalid credentials' });
-      }
-
-      const token = generateToken();
-      db.run(
-        'INSERT INTO sessions(token, userId, createdAt) VALUES (?, ?, ?)',
-        [token, row.id, new Date().toISOString()],
-        insertErr => {
-          closeDb(db);
-          if (insertErr) {
-            return res.status(500).json({ message: 'Database error' });
-          }
-
-          return res.status(200).json({
-            token,
-            user: {
-              id: row.id,
-              username: row.username,
-            },
-          });
-        }
-      );
-    }
-  );
+    const token = generateToken();
+    db.run('INSERT INTO sessions(token, userId, createdAt) VALUES (?, ?, ?)', [token, row.id, new Date().toISOString()], insertErr => {
+      closeDb(db);
+      if (insertErr) return res.status(500).json({ message: 'Database error' });
+      return res.status(200).json({ token, user: { id: row.id, username: row.username } });
+    });
+  });
 });
 
-// Logout
 app.post('/api/auth/logout', (req, res) => {
-  const bodyToken = (req.body && req.body.token) ? String(req.body.token).trim() : '';
-  const token = bodyToken || getBearerToken(req);
-
-  if (!token) {
-    return res.status(400).json({ message: 'token is required' });
-  }
-
+  const token = (req.body && req.body.token) ? String(req.body.token).trim() : getBearerToken(req);
+  if (!token) return res.status(400).json({ message: 'token is required' });
   const db = openDb();
-  db.run('DELETE FROM sessions WHERE token = ?', [token], function onDelete(err) {
+  db.run('DELETE FROM sessions WHERE token = ?', [token], function(err) {
     closeDb(db);
-    if (err) {
-      return res.status(500).json({ message: 'Database error' });
-    }
-
     return res.status(200).json({ ok: true, affected: this.changes });
   });
 });
 
-// Profile - Get
 app.get('/api/auth/profile', requireAuth, (req, res) => {
   const db = openDb();
-  db.get(
-    'SELECT id, username, email, phone, createdAt FROM users WHERE id = ?',
-    [req.auth.userId],
-    (err, row) => {
-      closeDb(db);
-      if (err) {
-        return res.status(500).json({ message: 'Database error' });
-      }
-      if (!row) {
-        return res.status(404).json({ message: 'User not found' });
-      }
-      res.json(row);
-    }
-  );
+  db.get('SELECT id, username, email, phone, createdAt FROM users WHERE id = ?', [req.auth.userId], (err, row) => {
+    closeDb(db);
+    if (err) return res.status(500).json({ message: 'Database error' });
+    if (!row) return res.status(404).json({ message: 'User not found' });
+    res.json(row);
+  });
 });
 
-// Profile - Update
 app.put('/api/auth/profile', requireAuth, (req, res) => {
   const { username, email, phone } = req.body;
-  if (!username) {
-    return res.status(400).json({ message: 'username is required' });
-  }
-
+  if (!username) return res.status(400).json({ message: 'username is required' });
   const db = openDb();
-  db.run(
-    'UPDATE users SET username = ?, email = ?, phone = ? WHERE id = ?',
-    [username.trim(), email, phone, req.auth.userId],
-    function(err) {
-      closeDb(db);
-      if (err) {
-        if (err.message.includes('UNIQUE')) {
-          return res.status(409).json({ message: 'username already exists' });
-        }
-        return res.status(500).json({ message: 'Database error' });
-      }
-      res.json({ ok: true });
+  db.run('UPDATE users SET username = ?, email = ?, phone = ? WHERE id = ?', [username.trim(), email, phone, req.auth.userId], function(err) {
+    closeDb(db);
+    if (err) {
+      if (err.message.includes('UNIQUE')) return res.status(409).json({ message: 'username already exists' });
+      return res.status(500).json({ message: 'Database error' });
     }
-  );
+    res.json({ ok: true });
+  });
 });
 
-// Profile - Change Password
 app.post('/api/auth/change-password', requireAuth, (req, res) => {
   const { currentPassword, newPassword } = req.body;
-  if (!currentPassword || !newPassword) {
-    return res.status(400).json({ message: 'Both current and new passwords are required' });
-  }
+  if (!currentPassword || !newPassword) return res.status(400).json({ message: 'Passwords are required' });
 
   const db = openDb();
   db.get('SELECT password FROM users WHERE id = ?', [req.auth.userId], (err, row) => {
-    if (err || !row) {
-      closeDb(db);
-      return res.status(500).json({ message: 'Database error' });
-    }
-
-    if (!verifyPassword(currentPassword, row.password)) {
-      closeDb(db);
-      return res.status(401).json({ message: 'Incorrect current password' });
-    }
+    if (err || !row) { closeDb(db); return res.status(500).json({ message: 'Database error' }); }
+    if (!verifyPassword(currentPassword, row.password)) { closeDb(db); return res.status(401).json({ message: 'Incorrect current password' }); }
 
     const hashedNew = hashPassword(newPassword);
     db.run('UPDATE users SET password = ? WHERE id = ?', [hashedNew, req.auth.userId], function(updateErr) {
       closeDb(db);
-      if (updateErr) {
-        return res.status(500).json({ message: 'Failed to update password' });
-      }
       res.json({ ok: true });
     });
   });
 });
 
-// Forgot password
-app.post('/api/auth/forgot-password', (req, res) => {
-  const { username } = req.body || {};
-
-  if (!username) {
-    return res.status(400).json({ message: 'username is required' });
-  }
-
-  const db = openDb();
-  db.get(
-    'SELECT id, username FROM users WHERE username = ?',
-    [username.trim()],
-    (err, row) => {
-      if (err) {
-        closeDb(db);
-        return res.status(500).json({ message: 'Database error' });
-      }
-
-      if (!row) {
-        closeDb(db);
-        return res.status(404).json({ message: 'User not found' });
-      }
-
-      const token = generateToken();
-      db.run(
-        'INSERT INTO password_resets(token, userId, createdAt) VALUES (?, ?, ?)',
-        [token, row.id, new Date().toISOString()],
-        insertErr => {
-          closeDb(db);
-          if (insertErr) {
-            return res.status(500).json({ message: 'Database error' });
-          }
-
-          return res.status(200).json({
-            message: 'Reset token created',
-            resetToken: token,
-            username: row.username,
-          });
-        }
-      );
-    }
-  );
-});
-
-// Reset password
-app.post('/api/auth/reset-password', (req, res) => {
-  const { token, newPassword } = req.body || {};
-
-  if (!token || !newPassword) {
-    return res.status(400).json({ message: 'token and newPassword are required' });
-  }
-
-  const db = openDb();
-  db.get(
-    'SELECT userId FROM password_resets WHERE token = ?',
-    [token],
-    (err, row) => {
-      if (err) {
-        closeDb(db);
-        return res.status(500).json({ message: 'Database error' });
-      }
-
-      if (!row) {
-        closeDb(db);
-        return res.status(400).json({ message: 'Invalid reset token' });
-      }
-
-      const hashedPassword = hashPassword(newPassword);
-      db.run(
-        'UPDATE users SET password = ? WHERE id = ?',
-        [hashedPassword, row.userId],
-        updateErr => {
-          if (updateErr) {
-            closeDb(db);
-            return res.status(500).json({ message: 'Database error' });
-          }
-
-          db.run('DELETE FROM password_resets WHERE token = ?', [token], deleteErr => {
-            closeDb(db);
-            if (deleteErr) {
-              return res.status(500).json({ message: 'Database error' });
-            }
-
-            return res.status(200).json({ ok: true });
-          });
-        }
-      );
-    }
-  );
-});
-
-// Transactions
+// Transaction Endpoints
 app.get('/api/transactions', requireAuth, (req, res) => {
-  console.log(`[GET] /api/transactions - User: ${req.auth.userId}`);
   const db = openDb();
-
-  db.all(
-    'SELECT * FROM transactions WHERE userId = ? ORDER BY date DESC',
-    [req.auth.userId],
-    (err, rows) => {
-      closeDb(db);
-      if (err) {
-        console.error('List Transactions Error:', err);
-        return res.status(500).json({ message: `Database error: ${err.message}`, code: err.code });
-      }
-      console.log(`[GET] /api/transactions - Success, found ${rows ? rows.length : 0} rows`);
-      return res.status(200).json(rows || []);
-    }
-  );
-});
-
-app.get('/api/transactions/:id', requireAuth, (req, res) => {
-  const db = openDb();
-
-  db.get(
-    'SELECT * FROM transactions WHERE id = ? AND userId = ?',
-    [req.params.id, req.auth.userId],
-    (err, row) => {
-      closeDb(db);
-      if (err) return res.status(500).json({ message: 'Database error' });
-      if (!row) return res.status(404).json({ message: 'Transaction not found' });
-      return res.status(200).json(row);
-    }
-  );
+  db.all('SELECT * FROM transactions WHERE userId = ? ORDER BY date DESC', [req.auth.userId], (err, rows) => {
+    closeDb(db);
+    if (err) return res.status(500).json({ message: 'Database error' });
+    res.status(200).json(rows || []);
+  });
 });
 
 app.post('/api/transactions', requireAuth, (req, res) => {
-  if (!req.body) return res.sendStatus(400);
-
-  const { amount, type, category, date, note, receiptUrl, accountId } = req.body;
-  if (!amount || !type || !category || !date) {
-    return res.status(400).json({ message: 'amount, type, category, date are required' });
-  }
+  const { amount, type, category, date, note, receiptUrl } = req.body || {};
+  if (!amount || !type || !category || !date) return res.status(400).json({ message: 'Missing fields' });
 
   const db = openDb();
-
   db.run(
-    `INSERT INTO transactions(userId, accountId, amount, type, category, note, date, createdAt, receiptUrl)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      Number(req.auth.userId),
-      accountId != null ? Number(accountId) : null,
-      Number(amount),
-      type,
-      String(category).trim(),
-      note || '',
-      date,
-      new Date().toISOString(),
-      receiptUrl || '',
-    ],
-    function onInsert(err) {
+    `INSERT INTO transactions(userId, amount, type, category, note, date, createdAt, receiptUrl)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [req.auth.userId, Number(amount), type, category, note || '', date, new Date().toISOString(), receiptUrl || ''],
+    function(err) {
       closeDb(db);
-      if (err) {
-        console.error('Insert Transaction Error:', err);
-        return res.status(500).json({ message: err.message || 'Database error', code: err.code });
-      }
-      return res.status(201).json({ id: String(this.lastID), affected: this.changes });
+      if (err) return res.status(500).json({ message: 'Database error' });
+      res.status(201).json({ id: this.lastID, affected: this.changes });
     }
   );
 });
 
 app.put('/api/transactions/:id', requireAuth, (req, res) => {
-  if (!req.body) return res.sendStatus(400);
-
-  const { amount, type, category, date, note, receiptUrl } = req.body;
-  if (!amount || !type || !category || !date) {
-    return res.status(400).json({ message: 'amount, type, category, date are required' });
-  }
-
+  const { amount, type, category, date, note, receiptUrl } = req.body || {};
   const db = openDb();
-
   db.run(
-    `UPDATE transactions
-     SET amount = ?, type = ?, category = ?, date = ?, note = ?, receiptUrl = ?
+    `UPDATE transactions SET amount = ?, type = ?, category = ?, date = ?, note = ?, receiptUrl = ?
      WHERE id = ? AND userId = ?`,
     [Number(amount), type, category, date, note || '', receiptUrl || '', req.params.id, req.auth.userId],
-    function onUpdate(err) {
+    function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
-      if (!this.changes) {
-        return res.status(404).json({ message: 'Transaction not found' });
-      }
-      return res.status(200).json({ id: req.params.id, affected: this.changes });
+      res.status(200).json({ ok: true, affected: this.changes });
     }
   );
 });
 
 app.delete('/api/transactions/:id', requireAuth, (req, res) => {
   const db = openDb();
+  db.run('DELETE FROM transactions WHERE id = ? AND userId = ?', [req.params.id, req.auth.userId], function(err) {
+    closeDb(db);
+    if (err) return res.status(500).json({ message: 'Database error' });
+    res.status(200).json({ ok: true, affected: this.changes });
+  });
+});
 
-  db.run(
-    'DELETE FROM transactions WHERE id = ? AND userId = ?',
-    [req.params.id, req.auth.userId],
-    function onDelete(err) {
+app.post('/api/auth/forgot-password', (req, res) => {
+  const { username } = req.body || {};
+  if (!username) return res.status(400).json({ message: 'username is required' });
+  const db = openDb();
+  db.get('SELECT id, username FROM users WHERE username = ?', [username.trim()], (err, row) => {
+    if (err || !row) { closeDb(db); return res.status(err ? 500 : 404).json({ message: err ? 'Database error' : 'User not found' }); }
+    const token = generateToken();
+    db.run('INSERT INTO password_resets(token, userId, createdAt) VALUES (?, ?, ?)', [token, row.id, new Date().toISOString()], err => {
       closeDb(db);
-      if (err) return res.status(500).json({ message: 'Database error' });
-      if (!this.changes) {
-        return res.status(404).json({ message: 'Transaction not found' });
-      }
-      return res.status(200).json({ id: req.params.id, affected: this.changes });
-    }
-  );
+      res.status(200).json({ message: 'Reset token created', resetToken: token, username: row.username });
+    });
+  });
+});
+
+app.post('/api/auth/reset-password', (req, res) => {
+  const { token, newPassword } = req.body || {};
+  if (!token || !newPassword) return res.status(400).json({ message: 'token and newPassword are required' });
+  const db = openDb();
+  db.get('SELECT userId FROM password_resets WHERE token = ?', [token], (err, row) => {
+    if (err || !row) { closeDb(db); return res.status(err ? 500 : 400).json({ message: err ? 'Database error' : 'Invalid token' }); }
+    const hashedPassword = hashPassword(newPassword);
+    db.run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, row.userId], err => {
+      db.run('DELETE FROM password_resets WHERE token = ?', [token], () => {
+        closeDb(db);
+        res.status(200).json({ ok: true });
+      });
+    });
+  });
 });

@@ -133,8 +133,9 @@ export async function getMonthlySpendingTrendPercent(_userId?: string, monthDate
   return ((currentTotal - prevTotal) / prevTotal) * 100;
 }
 
-export function formatCurrency(amount: number): string {
-  return `$${Math.abs(amount).toFixed(2)}`;
+export function formatCurrency(amount: number, showSign: boolean = false): string {
+  const sign = amount < 0 ? '-' : (showSign && amount > 0 ? '+' : '');
+  return `${sign}$${Math.abs(amount).toFixed(2)}`;
 }
 
 export function formatTrendPercent(value: number): string {
