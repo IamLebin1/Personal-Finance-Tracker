@@ -32,6 +32,36 @@ Personal Finance Tracker is a React Native app for tracking income, expenses, hi
 - Node.js 22.11.0 or higher
 - React Native development environment (Android Studio / Xcode)
 
+<<<<<<< HEAD
+## Setup Instructions
+1. Clone and enter the project:
+   ```bash
+   git clone https://github.com/iamLebin1/Personal-Finance-Tracker.git
+   cd Personal-Finance-Tracker
+   ```
+
+2. Install dependencies:
+    ```bash
+    npm install --legacy-peer-deps
+    ```
+
+3. Create your local app config (required):
+    ```bash
+    copy config\appConfig.example.ts config\appConfig.ts
+    ```
+    *Note: `config/appConfig.ts` is gitignored, so each developer must create their own local copy.*
+
+4. Edit `config/appConfig.ts` for your environment:
+    - `APP_MODE` (for example: `local`)
+    - `SQLITE_DB_NAME` (for example: `finance_tracker.sqlite`)
+    - `SQLITE_SEED_DEMO` (`true` or `false`)
+    - `API_BASE_URL` (if using backend mode)
+
+5. Run the application:
+    ```bash
+    npx react-native run-android
+    ```
+=======
 ## Quick Start
 
 1. Clone and enter the project:
@@ -42,6 +72,7 @@ cd Personal-Finance-Tracker
 ```
 
 2. Install dependencies:
+>>>>>>> 35d555e7e9f430e0a4ff385d572955c3a02f1ca4
 
 ```bash
 npm install --legacy-peer-deps
