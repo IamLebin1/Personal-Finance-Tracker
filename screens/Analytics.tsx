@@ -219,11 +219,11 @@ export default function Analytics() {
               <Svg height="100%" width="100%" style={StyleSheet.absoluteFill}>
                 <Defs>
                   <LinearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <Stop offset="0%" stopColor="#16193b" stopOpacity={1} />
-                    <Stop offset="100%" stopColor="#0a0c1f" stopOpacity={1} />
+                    <Stop offset="0%" stopColor="#1A1F46" stopOpacity={1} />
+                    <Stop offset="55%" stopColor="#111633" stopOpacity={1} />
+                    <Stop offset="100%" stopColor="#0B0F22" stopOpacity={1} />
                   </LinearGradient>
                 </Defs>
-                <Rect width="100%" height="100%" fill="url(#grad)" rx="28" />
               </Svg>
               
               <View style={styles.cardHeader}>
@@ -326,12 +326,14 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     borderWidth: 1,
     borderColor: '#232859',
+    backgroundColor: '#111633',
     overflow: 'hidden',
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   cardHeader: {
     justifyContent: 'center',
+    zIndex: 2,
   },
   cardLabel: {
     color: '#8a90c6',
@@ -490,6 +492,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 60,
+    opacity: 0.9,
   },
   curveContainer: {
     flex: 1,
