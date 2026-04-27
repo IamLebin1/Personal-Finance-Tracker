@@ -406,7 +406,7 @@ app.delete('/api/transactions/:id', auth, (req, res) => {
   });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Finance API running on port ${PORT}`);
 });
