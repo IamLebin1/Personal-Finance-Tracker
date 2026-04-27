@@ -32,7 +32,7 @@ const { width } = Dimensions.get('window');
 const CATEGORY_COLORS = ['#8a6eff', '#5d3fd3', '#20ce8f', '#ff4d6d', '#ffb359', '#00d4aa', '#ff6b9d', '#a78bfa'];
 
 export default function Analytics() {
-  useCurrency();
+  const { code, usdToMyrRate } = useCurrency();
   const [weeklySpending, setWeeklySpending] = useState<number>(0);
   const [categorySpending, setCategorySpending] = useState<CategorySpending[]>([]);
   const [daySpending, setDaySpending] = useState<DaySpending[]>([]);
@@ -128,6 +128,7 @@ export default function Analytics() {
 
       const stats = dayMap.get(day);
       const net = stats ? stats.income - stats.expense : 0;
+      const netInDisplayCurrency = code === 'MYR' ? net * usdToMyrRate : net;
       const hasActivity = !!stats && (stats.income > 0 || stats.expense > 0);
 
       cells.push(
@@ -141,7 +142,9 @@ export default function Analytics() {
           <Text style={[styles.dayNumber, hasActivity && styles.dayNumberActive]}>{day}</Text>
           {hasActivity && (
             <Text style={[styles.dayAmount, { color: net >= 0 ? '#20ce8f' : '#ff4d6d' }]} numberOfLines={1}>
-              {net >= 0 ? `+${Math.round(net)}` : `-${Math.round(Math.abs(net))}`}
+              {netInDisplayCurrency >= 0
+                ? `+${Math.round(netInDisplayCurrency)}`
+                : `-${Math.round(Math.abs(netInDisplayCurrency))}`}
             </Text>
           )}
         </View>,
@@ -149,7 +152,7 @@ export default function Analytics() {
     }
 
     return cells;
-  }, [currentMonth, daySpending]);
+  }, [currentMonth, daySpending, code, usdToMyrRate]);
 
   const goToPreviousMonth = () => {
     setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
