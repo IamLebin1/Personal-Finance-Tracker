@@ -3,6 +3,7 @@ import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { deleteTransaction, updateTransaction } from '../services/transactionApi';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
+import { useCurrency } from '../services/useCurrency';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TransactionDetail'>;
 
@@ -20,8 +21,9 @@ const categoryOptions = [
 
 export default function TransactionDetail({ route, navigation }: Props) {
   const { transaction } = route.params;
+  const { symbol, convertFromUsd, convertToUsd } = useCurrency();
 
-  const [amount, setAmount] = useState(String(transaction.amount));
+  const [amount, setAmount] = useState(() => convertFromUsd(transaction.amount).toFixed(2));
   const [note, setNote] = useState(transaction.note ?? '');
   const [category, setCategory] = useState(transaction.category);
   const [type, setType] = useState<'income' | 'expense'>(transaction.type);
@@ -35,10 +37,12 @@ export default function TransactionDetail({ route, navigation }: Props) {
       return;
     }
 
+    const amountInUsd = convertToUsd(parsedAmount);
+
     setIsSaving(true);
     try {
       await updateTransaction(transaction.id, {
-        amount: parsedAmount,
+        amount: amountInUsd,
         note: note.trim(),
         category,
         type,
@@ -76,7 +80,7 @@ export default function TransactionDetail({ route, navigation }: Props) {
     <View style={styles.screen}>
       <Text style={styles.label}>Amount</Text>
       <View style={styles.amountWrap}>
-        <Text style={styles.currency}>$</Text>
+        <Text style={styles.currency}>{symbol}</Text>
         <TextInput
           value={amount}
           onChangeText={setAmount}

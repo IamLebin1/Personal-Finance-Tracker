@@ -5,6 +5,7 @@ import { insertTransaction } from '../services/transactionApi';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { getAuthSession } from '../services/authSession';
 import type { TransactionType } from '../types/transaction';
+import { useCurrency } from '../services/useCurrency';
 
 const categories = [
   { key: 'food', label: 'Food' },
@@ -106,6 +107,7 @@ function formatFixedMoney(value: number): string {
 }
 
 export default function AddTransaction({ navigation, route }: Props) {
+  const { symbol, convertToUsd } = useCurrency();
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(categories[0]?.key ?? 'food');
@@ -309,11 +311,13 @@ export default function AddTransaction({ navigation, route }: Props) {
   };
 
   const onSave = async (overrideAmount?: number) => {
-    const amountToSave = overrideAmount ?? parsedAmount;
-    if (amountToSave <= 0) {
+    const enteredAmount = overrideAmount ?? parsedAmount;
+    if (enteredAmount <= 0) {
       Alert.alert('Invalid amount', 'Please enter a valid amount greater than 0.');
       return;
     }
+
+    const amountToSave = convertToUsd(enteredAmount);
 
     const session = getAuthSession();
     if (!session?.userId) {
@@ -387,7 +391,7 @@ export default function AddTransaction({ navigation, route }: Props) {
 
         <ScrollView style={styles.contentScroll} contentContainerStyle={styles.contentScrollContainer} showsVerticalScrollIndicator={false}>
           <Pressable style={styles.amountWrap} onPress={() => setIsCalculatorVisible(true)}>
-            <Text style={styles.currency}>$</Text>
+            <Text style={styles.currency}>{symbol}</Text>
             <Text style={styles.amountText}>{displayAmount}</Text>
           </Pressable>
 
@@ -451,7 +455,7 @@ export default function AddTransaction({ navigation, route }: Props) {
           <View style={styles.calculatorCard} onStartShouldSetResponder={() => true}>
             <View style={styles.calculatorHandle} />
             <View style={styles.calculatorAmountDisplay}>
-              <Text style={styles.calculatorCurrency}>$</Text>
+              <Text style={styles.calculatorCurrency}>{symbol}</Text>
               <View style={styles.calculatorAmountColumn}>
                 {calculatorExpression ? <Text style={styles.calculatorExpressionText}>{calculatorExpression}</Text> : null}
                 <Text style={styles.calculatorAmountText}>{displayAmount}</Text>

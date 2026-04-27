@@ -16,6 +16,7 @@ import Svg, { Path, Defs, LinearGradient, Stop, Rect, Circle } from 'react-nativ
 import { getAuthSession } from '../services/authSession';
 import { getTransactionsByUser } from '../services/transactionApi';
 import { formatCurrency, getSpendingByCategory } from '../services/transactionService';
+import { useCurrency } from '../services/useCurrency';
 import type { Transaction } from '../types/transaction';
 import type { CategorySpending } from '../services/transactionService';
 
@@ -91,6 +92,7 @@ function formatCategoryLabel(category: string): string {
 }
 
 export default function Dashboard({ navigation }: { navigation: any }) {
+  useCurrency();
   // 1. All Hooks at the top
   const [totalBalance, setTotalBalance] = useState(0);
   const [incomeTotal, setIncomeTotal] = useState(0);

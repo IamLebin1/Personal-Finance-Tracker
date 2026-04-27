@@ -26,11 +26,13 @@ import {
 import { getAuthSession } from '../services/authSession';
 import { getTransactionsByUser } from '../services/transactionApi';
 import type { Transaction } from '../types/transaction';
+import { useCurrency } from '../services/useCurrency';
 
 const { width } = Dimensions.get('window');
 const CATEGORY_COLORS = ['#8a6eff', '#5d3fd3', '#20ce8f', '#ff4d6d', '#ffb359', '#00d4aa', '#ff6b9d', '#a78bfa'];
 
 export default function Analytics() {
+  useCurrency();
   const [weeklySpending, setWeeklySpending] = useState<number>(0);
   const [categorySpending, setCategorySpending] = useState<CategorySpending[]>([]);
   const [daySpending, setDaySpending] = useState<DaySpending[]>([]);

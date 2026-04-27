@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RootStackNavigator from './navigation/RootStackNavigator';
+import { loadCurrencyPreference, startCurrencyRateFeed, stopCurrencyRateFeed } from './services/currencyService';
 
 const financeDarkTheme = {
   ...DarkTheme,
@@ -18,6 +19,15 @@ const financeDarkTheme = {
 };
 
 function App() {
+  useEffect(() => {
+    void loadCurrencyPreference();
+    void startCurrencyRateFeed();
+
+    return () => {
+      stopCurrencyRateFeed();
+    };
+  }, []);
+
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="light-content" backgroundColor="#090a1f" />
