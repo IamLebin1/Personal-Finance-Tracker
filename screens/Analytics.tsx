@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { 
   ScrollView, 
   StyleSheet, 
@@ -37,7 +37,9 @@ export default function Analytics() {
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [spendingTrend, setSpendingTrend] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isMonthLoading, setIsMonthLoading] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const hasLoadedRef = useRef(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -45,6 +47,12 @@ export default function Analytics() {
   const loadAnalytics = useCallback(() => {
     let isMounted = true;
     const task = InteractionManager.runAfterInteractions(async () => {
+      const isInitialLoad = !hasLoadedRef.current;
+
+      if (!isInitialLoad && isMounted) {
+        setIsMonthLoading(true);
+      }
+
       try {
         const userId = getAuthSession()?.userId || '';
         if (!userId) return;
@@ -66,11 +74,16 @@ export default function Analytics() {
       } catch (error) {
         console.error('Failed to load analytics:', error);
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isMounted) {
+          if (isInitialLoad) {
+            hasLoadedRef.current = true;
+            setIsLoading(false);
+          }
+          setIsMonthLoading(false);
+        }
       }
     });
 
-    setIsLoading(true);
     return () => {
       isMounted = false;
       task.cancel();
@@ -89,34 +102,59 @@ export default function Analytics() {
   }, [isLoading, fadeAnim, slideAnim]);
 
   const totalMonthlySpending = categorySpending.reduce((sum, cat) => sum + cat.amount, 0);
-  
-  const renderCalendarDays = () => {
+  const monthTitle = useMemo(
+    () => currentMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+    [currentMonth],
+  );
+
+  const calendarCells = useMemo(() => {
     const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
     const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
     const dayMap = new Map(daySpending.map(d => [d.day, d]));
-    const days = [];
-    
-    for (let i = 0; i < firstDay; i++) {
-      days.push(<View key={`empty-${i}`} style={styles.calendarDay} />);
-    }
-    
-    for (let day = 1; day <= daysInMonth; day++) {
+    const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+    const cells = [];
+
+    for (let cellIndex = 0; cellIndex < totalCells; cellIndex++) {
+      const day = cellIndex - firstDay + 1;
+
+      if (day < 1 || day > daysInMonth) {
+        cells.push(
+          <View key={`empty-${cellIndex}`} style={[styles.calendarDay, styles.calendarDayEmpty]} />,
+        );
+        continue;
+      }
+
       const stats = dayMap.get(day);
       const net = stats ? stats.income - stats.expense : 0;
       const hasActivity = !!stats && (stats.income > 0 || stats.expense > 0);
-      
-      days.push(
-        <View key={day} style={[styles.calendarDay, hasActivity && (net >= 0 ? styles.daySurplus : styles.dayExpense)]}>
+
+      cells.push(
+        <View
+          key={day}
+          style={[
+            styles.calendarDay,
+            hasActivity && (net >= 0 ? styles.daySurplus : styles.dayExpense),
+          ]}
+        >
           <Text style={[styles.dayNumber, hasActivity && styles.dayNumberActive]}>{day}</Text>
           {hasActivity && (
             <Text style={[styles.dayAmount, { color: net >= 0 ? '#20ce8f' : '#ff4d6d' }]} numberOfLines={1}>
               {net >= 0 ? `+${Math.round(net)}` : `-${Math.round(Math.abs(net))}`}
             </Text>
           )}
-        </View>
+        </View>,
       );
     }
-    return days;
+
+    return cells;
+  }, [currentMonth, daySpending]);
+
+  const goToPreviousMonth = () => {
+    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const goToNextMonth = () => {
+    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
   const renderCurveGraph = () => {
@@ -206,13 +244,26 @@ export default function Analytics() {
             {/* 2. Calendar View */}
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Daily Activity</Text>
-              <Text style={styles.monthName}>{currentMonth.toLocaleString('en-US', { month: 'long' })}</Text>
+              <View style={styles.monthControls}>
+                <Pressable style={styles.monthButton} onPress={goToPreviousMonth} disabled={isMonthLoading}>
+                  <Text style={styles.monthButtonText}>{'<'}</Text>
+                </Pressable>
+                <Text style={styles.monthName}>{monthTitle}</Text>
+                <Pressable style={styles.monthButton} onPress={goToNextMonth} disabled={isMonthLoading}>
+                  <Text style={styles.monthButtonText}>{'>'}</Text>
+                </Pressable>
+              </View>
             </View>
             <View style={styles.calendarContainer}>
               <View style={styles.weekdays}>
                 {['S','M','T','W','T','F','S'].map((d, i) => <Text key={i} style={styles.weekday}>{d}</Text>)}
               </View>
-              <View style={styles.calendarGrid}>{renderCalendarDays()}</View>
+              <View style={styles.calendarGrid}>{calendarCells}</View>
+              {isMonthLoading ? (
+                <View style={styles.calendarLoadingOverlay}>
+                  <ActivityIndicator color="#8a6eff" size="small" />
+                </View>
+              ) : null}
             </View>
 
             {/* 3. Category Breakdown */}
@@ -345,8 +396,30 @@ const styles = StyleSheet.create({
   },
   monthName: {
     color: '#8a6eff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
+    minWidth: 120,
+    textAlign: 'center',
+  },
+  monthControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  monthButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#232859',
+    borderWidth: 1,
+    borderColor: '#2f366f',
+  },
+  monthButtonText: {
+    color: '#d0d5ff',
+    fontSize: 14,
+    fontWeight: '800',
   },
   calendarContainer: {
     backgroundColor: '#16193b',
@@ -355,30 +428,48 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     borderWidth: 1,
     borderColor: '#232859',
+    position: 'relative',
   },
   weekdays: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'flex-start',
     marginBottom: 12,
   },
   weekday: {
     color: '#636781',
     fontSize: 11,
     fontWeight: '800',
-    width: 34,
+    width: '14.285%',
     textAlign: 'center',
   },
   calendarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-around',
+    justifyContent: 'flex-start',
   },
   calendarDay: {
-    width: 34,
-    height: 38,
+    width: '14.285%',
+    minHeight: 42,
+    paddingVertical: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    borderRadius: 8,
+  },
+  calendarDayEmpty: {
+    opacity: 0,
+  },
+  daySurplus: {
+    backgroundColor: 'rgba(32, 206, 143, 0.1)',
+  },
+  dayExpense: {
+    backgroundColor: 'rgba(255, 77, 109, 0.1)',
+  },
+  calendarLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(7, 8, 23, 0.28)',
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dayNumber: {
     color: '#8a90c6',
