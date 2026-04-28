@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View, StatusBar, Image } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View, StatusBar, Image, ScrollView } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { deleteTransaction, updateTransaction } from '../services/transactionApi';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
@@ -82,6 +82,7 @@ export default function TransactionDetail({ route, navigation }: Props) {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={colors.statusBar} />
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <Text style={[styles.label, { color: colors.textMuted }]}>Amount</Text>
       <View style={[styles.amountWrap, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
         <Text style={[styles.currency, { color: colors.primary }]}>$</Text>
@@ -152,6 +153,7 @@ export default function TransactionDetail({ route, navigation }: Props) {
       <Pressable style={[styles.deleteButton, { backgroundColor: colors.danger + '20', borderColor: colors.danger + '40' }, isDeleting && styles.disabledButton]} onPress={onDelete} disabled={isDeleting}>
         <Text style={[styles.deleteButtonText, { color: colors.danger }]}>{isDeleting ? 'Deleting...' : 'Delete Transaction'}</Text>
       </Pressable>
+      </ScrollView>
     </View>
   );
 }
@@ -159,8 +161,11 @@ export default function TransactionDetail({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+  },
+  scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 50,
+    paddingBottom: 40,
   },
   label: {
     fontSize: 12,
