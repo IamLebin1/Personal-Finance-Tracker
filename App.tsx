@@ -1,22 +1,43 @@
 import React, { useEffect } from 'react';
-import { NavigationContainer, DarkTheme } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RootStackNavigator from './navigation/RootStackNavigator';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { loadCurrencyPreference, startCurrencyRateFeed, stopCurrencyRateFeed } from './services/currencyService';
 
-const financeDarkTheme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    background: '#090a1f',
-    card: '#101230',
-    border: '#1f2357',
-    text: '#f2f4ff',
-    primary: '#7f5bff',
-    notification: '#16ca8e',
-  },
-};
+function AppContent() {
+  const { isDark, colors } = useTheme();
+
+  const navigationTheme = isDark ? {
+    ...DarkTheme,
+    colors: {
+      ...DarkTheme.colors,
+      background: colors.background,
+      card: colors.card,
+      border: colors.cardBorder,
+      text: colors.text,
+      primary: colors.primary,
+    },
+  } : {
+    ...DefaultTheme,
+    colors: {
+      ...DefaultTheme.colors,
+      background: colors.background,
+      card: colors.card,
+      border: colors.cardBorder,
+      text: colors.text,
+      primary: colors.primary,
+    },
+  };
+
+  return (
+    <NavigationContainer theme={navigationTheme}>
+      <StatusBar barStyle={colors.statusBar} backgroundColor={colors.background} />
+      <RootStackNavigator />
+    </NavigationContainer>
+  );
+}
 
 function App() {
   useEffect(() => {
@@ -30,10 +51,9 @@ function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle="light-content" backgroundColor="#090a1f" />
-      <NavigationContainer theme={financeDarkTheme}>
-        <RootStackNavigator />
-      </NavigationContainer>
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

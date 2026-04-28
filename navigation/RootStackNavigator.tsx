@@ -9,6 +9,8 @@ import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import TransactionDetail from '../screens/TransactionDetail';
 import ProfileDetails from '../screens/ProfileDetails';
 import SecuritySettings from '../screens/SecuritySettings';
+import Notifications from '../screens/Notifications';
+import BudgetScreen from '../screens/BudgetScreen';
 import type { Transaction } from '../types/transaction';
 import { loadAuthSession } from '../services/authSession';
 
@@ -21,6 +23,8 @@ export type RootStackParamList = {
   TransactionDetail: { transaction: Transaction };
   ProfileDetails: undefined;
   SecuritySettings: undefined;
+  Notifications: undefined;
+  Budget: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -33,13 +37,11 @@ export default function RootStackNavigator() {
     const checkSession = async () => {
       try {
         const session = await loadAuthSession();
-        if (session && session.token) {
-          setIsAuthenticated(true);
-        }
+        setIsAuthenticated(!!(session && session.token));
       } catch (err) {
         console.error('Session check error:', err);
+        setIsAuthenticated(false);
       } finally {
-        setIsAuthenticated(!!(await loadAuthSession())); // Re-check to be safe or use local variable
         setIsLoading(false);
       }
     };
@@ -80,7 +82,12 @@ export default function RootStackNavigator() {
       <Stack.Screen
         name="AddTransaction"
         component={AddTransaction}
-        options={{ headerShown: false }}
+        options={{ 
+          headerShown: false,
+          animation: 'none',
+          presentation: 'transparentModal',
+          contentStyle: { backgroundColor: 'transparent' }
+        }}
       />
       <Stack.Screen
         name="TransactionDetail"
@@ -96,6 +103,16 @@ export default function RootStackNavigator() {
         name="SecuritySettings"
         component={SecuritySettings}
         options={{ title: 'Security' }}
+      />
+      <Stack.Screen
+        name="Notifications"
+        component={Notifications}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Budget"
+        component={BudgetScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

@@ -1,60 +1,59 @@
-import React, { useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { 
   ActivityIndicator, 
-  ScrollView, 
+  FlatList, 
+  Pressable, 
   StyleSheet, 
   Text, 
   View, 
-  Animated, 
-  Pressable, 
-  TextInput, 
+  TextInput,
+  Animated,
   StatusBar,
-  InteractionManager
+  InteractionManager,
+  Modal,
+  Platform,
+  ScrollView
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import Svg, { Path, Circle } from 'react-native-svg';
-import type { Transaction } from '../types/transaction';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { getTransactionsByUser } from '../services/transactionApi';
+import { getWallets } from '../services/walletApi';
+import { getSelectedWalletId, setSelectedWalletId } from '../services/walletService';
 import { formatCurrency } from '../services/transactionService';
-import { useCurrency } from '../services/useCurrency';
-
-function formatCategoryLabel(category: string): string {
-  return category
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function getGroupLabel(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(now.getDate() - 1);
-
-  if (date.toDateString() === now.toDateString()) return 'Today';
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  
-  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-}
+import type { Transaction, Wallet } from '../types/transaction';
+import { getCategoryData } from '../constants/categories';
+import { useTheme } from '../context/ThemeContext';
 
 export default function History() {
-  useCurrency();
-  // 1. All hooks at the top
+  const { colors, isDark } = useTheme();
+  const navigation = useNavigation();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
 
+  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
+  const [isWalletModalVisible, setIsWalletModalVisible] = useState(false);
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
 
-  const loadTransactions = useCallback(() => {
+  const loadData = useCallback(() => {
     let isMounted = true;
-    const task = InteractionManager.runAfterInteractions(async () => {
+    const idleHandle = requestIdleCallback(async () => {
       try {
-        const rows = await getTransactionsByUser();
+        const fetchedWallets = await getWallets();
+        const savedWalletId = await getSelectedWalletId();
+        const isAllWallets = !savedWalletId || savedWalletId === 'all';
+        const currentWallet = isAllWallets ? null : (fetchedWallets.find(w => String(w.id) === String(savedWalletId)) || null);
+        
+        if (isMounted) {
+          setWallets(fetchedWallets);
+          setSelectedWallet(currentWallet);
+        }
+
+        const rows = await getTransactionsByUser(undefined, currentWallet?.id);
         if (isMounted) {
           setTransactions(rows);
           setFilteredTransactions(rows);
@@ -65,326 +64,236 @@ export default function History() {
         }
       }
     });
-    
+
     setIsLoading(true);
     return () => {
       isMounted = false;
-      task.cancel();
+      cancelIdleCallback(idleHandle);
     };
   }, []);
 
-  useFocusEffect(loadTransactions);
+  useFocusEffect(loadData);
 
   useEffect(() => {
     if (!isLoading) {
       Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 600,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 600,
-          useNativeDriver: true,
-        }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
       ]).start();
     }
-  }, [isLoading, fadeAnim, slideAnim]);
+  }, [isLoading]);
 
   useEffect(() => {
     let filtered = transactions;
     if (searchQuery) {
       filtered = filtered.filter(tx => 
         tx.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (tx.note && tx.note.toLowerCase().includes(searchQuery.toLowerCase()))
+        (tx.note || '').toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
-    if (activeFilter !== 'All') {
-      filtered = filtered.filter(tx => tx.type.toLowerCase() === activeFilter.toLowerCase());
+    if (activeFilter === 'Income') {
+      filtered = filtered.filter(tx => tx.type === 'income');
+    } else if (activeFilter === 'Expense') {
+      filtered = filtered.filter(tx => tx.type === 'expense');
     }
     setFilteredTransactions(filtered);
   }, [searchQuery, activeFilter, transactions]);
 
-  // 2. Render logic
-  const groupedTransactions: { [key: string]: Transaction[] } = {};
-  filteredTransactions.forEach(tx => {
-    const label = getGroupLabel(tx.date);
-    if (!groupedTransactions[label]) {
-      groupedTransactions[label] = [];
-    }
-    groupedTransactions[label].push(tx);
-  });
+  const handleSelectWallet = async (wallet: Wallet | null) => {
+    const id = wallet ? String(wallet.id) : '';
+    await setSelectedWalletId(id);
+    setSelectedWallet(wallet);
+    setIsWalletModalVisible(false);
+    loadData();
+  };
+
+  const renderItem = ({ item }: { item: Transaction }) => {
+    const catData = getCategoryData(item.category);
+    const date = new Date(item.date);
+    
+    return (
+      <Pressable 
+        style={[styles.txItem, { backgroundColor: colors.card, borderBottomColor: colors.cardBorder }]}
+        onPress={() => navigation.navigate('TransactionDetail' as never, { transaction: item } as never)}
+      >
+        <View style={[styles.txIconWrap, { backgroundColor: catData.color + '15' }]}>
+          <Text style={styles.categoryIcon}>{catData.icon}</Text>
+        </View>
+        <View style={styles.txInfo}>
+          <Text style={[styles.txCategory, { color: colors.text }]}>{catData.label}</Text>
+          <Text style={[styles.txDate, { color: colors.textMuted }]}>
+            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} • {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+          </Text>
+        </View>
+        <View style={styles.txAmountWrap}>
+          <Text style={[styles.txAmount, { color: item.type === 'income' ? colors.success : colors.text }]}>
+            {item.type === 'income' ? '+' : '-'}{formatCurrency(item.amount)}
+          </Text>
+          {item.note ? <Text numberOfLines={1} style={[styles.txNote, { color: colors.textMuted }]}>{item.note}</Text> : null}
+        </View>
+      </Pressable>
+    );
+  };
 
   return (
-    <View style={styles.screen}>
-      <StatusBar barStyle="light-content" />
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={colors.statusBar} />
       
-      {/* Premium Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Transaction History</Text>
-        <Text style={styles.headerSubtitle}>Track and manage your spending</Text>
-      </View>
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { color: colors.text }]}>History</Text>
+          <Pressable 
+            style={[styles.walletBadge, { backgroundColor: colors.primaryBg, borderColor: colors.primary + '30' }]} 
+            onPress={() => setIsWalletModalVisible(true)}
+          >
+            <Text style={[styles.walletBadgeText, { color: colors.primary }]}>{selectedWallet?.name || 'All Wallets'}</Text>
+            <Text style={[styles.walletChevron, { color: colors.primary }]}>▼</Text>
+          </Pressable>
+        </View>
 
-      {/* Search & Filter Bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBox}>
-          <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#747bb6" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={styles.searchIcon}>
-            <Circle cx="11" cy="11" r="8" />
-            <Path d="M21 21l-4.35-4.35" />
-          </Svg>
+        <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
-            style={styles.searchInput}
-            placeholder="Search transactions..."
-            placeholderTextColor="#747bb6"
+            placeholder="Search categories or notes..."
+            placeholderTextColor={colors.textMuted + '80'}
+            style={[styles.searchInput, { color: colors.text }]}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
+
+        <View style={styles.filterRow}>
           {['All', 'Income', 'Expense'].map(filter => (
             <Pressable 
               key={filter} 
               onPress={() => setActiveFilter(filter)}
-              style={[styles.filterChip, activeFilter === filter && styles.filterChipActive]}
+              style={[
+                styles.filterChip, 
+                { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                activeFilter === filter && { backgroundColor: colors.primary, borderColor: colors.primary }
+              ]}
             >
-              <Text style={[styles.filterText, activeFilter === filter && styles.filterTextActive]}>{filter}</Text>
+              <Text style={[
+                styles.filterText, 
+                { color: colors.textMuted },
+                activeFilter === filter && { color: '#fff' }
+              ]}>{filter}</Text>
             </Pressable>
           ))}
-        </ScrollView>
+        </View>
       </View>
 
       {isLoading ? (
-        <View style={styles.centerBox}>
-          <ActivityIndicator color="#8a6eff" size="large" />
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} size="large" />
         </View>
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-            {Object.keys(groupedTransactions).map((groupLabel) => (
-              <View key={groupLabel} style={styles.groupContainer}>
-                <Text style={styles.groupLabel}>{groupLabel}</Text>
-                <View style={styles.cardList}>
-                  {groupedTransactions[groupLabel].map((item, idx) => (
-                    <View key={item.id} style={[styles.txItem, idx === groupedTransactions[groupLabel].length - 1 && styles.txItemLast]}>
-                      <View style={[styles.iconWrap, { backgroundColor: item.type === 'income' ? 'rgba(32, 206, 143, 0.12)' : 'rgba(255, 77, 109, 0.12)' }]}>
-                        <Text style={[styles.itemArrow, { color: item.type === 'income' ? '#20ce8f' : '#ff4d6d' }]}>
-                          {item.type === 'income' ? '↓' : '↑'}
-                        </Text>
-                      </View>
-                      <View style={styles.txInfo}>
-                        <Text style={styles.txCategory}>{formatCategoryLabel(item.category)}</Text>
-                        <Text style={styles.txNote} numberOfLines={1}>{item.note || 'No description'}</Text>
-                      </View>
-                      <View style={styles.amountWrap}>
-                        <Text style={[styles.txAmount, { color: item.type === 'income' ? '#20ce8f' : '#f4f6ff' }]}>
-                          {item.type === 'income' ? '+' : '-'}{formatCurrency(item.amount)}
-                        </Text>
-                        <Text style={styles.txTime}>
-                          {new Date(item.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                        </Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
+        <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+          <FlatList
+            data={filteredTransactions}
+            renderItem={renderItem}
+            keyExtractor={item => item.id}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyIcon}>📂</Text>
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>No transactions</Text>
+                <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+                  {searchQuery ? "Try a different search term" : `Start by adding your first transaction in ${selectedWallet?.name || 'your wallets'}`}
+                </Text>
               </View>
-            ))}
-
-            {filteredTransactions.length === 0 && (
-              <View style={styles.emptyState}>
-                <View style={styles.emptyIconBox}>
-                  <Text style={styles.emptyIcon}>🔍</Text>
-                </View>
-                <Text style={styles.emptyTitle}>No transactions found</Text>
-                <Text style={styles.emptyText}>Try adjusting your search or filters to find what you're looking for.</Text>
-              </View>
-            )}
-          </Animated.View>
-        </ScrollView>
+            }
+          />
+        </Animated.View>
       )}
+
+      {/* Shared Wallet Modal */}
+      <Modal visible={isWalletModalVisible} transparent animationType="slide" onRequestClose={() => setIsWalletModalVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setIsWalletModalVisible(false)}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Filter by Wallet</Text>
+              <Pressable onPress={() => setIsWalletModalVisible(false)}>
+                <Text style={[styles.modalCloseText, { color: colors.textMuted }]}>✕</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={styles.walletList} showsVerticalScrollIndicator={false}>
+              <Pressable 
+                style={[styles.walletItem, !selectedWallet && styles.walletItemActive, { backgroundColor: !selectedWallet ? colors.primaryBg : colors.background, borderColor: !selectedWallet ? colors.primary : 'transparent' }]}
+                onPress={() => handleSelectWallet(null)}
+              >
+                <View style={[styles.walletIconBox, { backgroundColor: colors.primaryBg }]}><Text style={styles.walletIcon}>🌐</Text></View>
+                <View style={styles.walletInfo}><Text style={[styles.walletNameText, { color: colors.text }]}>All Wallets</Text></View>
+                {!selectedWallet && <View style={[styles.checkCircle, { backgroundColor: colors.primary }]}><Text style={styles.checkIcon}>✓</Text></View>}
+              </Pressable>
+              {wallets.map(wallet => (
+                <Pressable 
+                  key={wallet.id} 
+                  style={[styles.walletItem, selectedWallet?.id === wallet.id && styles.walletItemActive, { backgroundColor: selectedWallet?.id === wallet.id ? colors.primaryBg : colors.background, borderColor: selectedWallet?.id === wallet.id ? colors.primary : 'transparent' }]}
+                  onPress={() => handleSelectWallet(wallet)}
+                >
+                  <View style={[styles.walletIconBox, { backgroundColor: wallet.color + '20' }]}><Text style={styles.walletIcon}>{wallet.icon}</Text></View>
+                  <View style={styles.walletInfo}><Text style={[styles.walletNameText, { color: colors.text }]}>{wallet.name}</Text></View>
+                  {selectedWallet?.id === wallet.id && <View style={[styles.checkCircle, { backgroundColor: colors.primary }]}><Text style={styles.checkIcon}>✓</Text></View>}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#070817',
+  screen: { flex: 1 },
+  header: { paddingHorizontal: 20, paddingTop: 60, paddingBottom: 15 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  title: { fontSize: 28, fontWeight: '800' },
+  walletBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
+  walletBadgeText: { fontSize: 12, fontWeight: '700' },
+  walletChevron: { fontSize: 10, marginLeft: 6 },
+  searchBox: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, height: 50, borderRadius: 15, borderWidth: 1, marginBottom: 15 },
+  searchIcon: { fontSize: 16, marginRight: 10 },
+  searchInput: { flex: 1, fontSize: 15, fontWeight: '500' },
+  filterRow: { flexDirection: 'row', gap: 10 },
+  filterChip: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  filterText: { fontSize: 13, fontWeight: '700' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  listContent: { paddingHorizontal: 20, paddingBottom: 120 },
+  txItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 16, 
+    borderRadius: 20, 
+    marginBottom: 12, 
+    borderWidth: 1 
   },
-  header: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  headerTitle: {
-    color: '#f4f6ff',
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    color: '#8a90c6',
-    fontSize: 14,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  searchContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 10,
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#16193b',
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    height: 54,
-    borderWidth: 1,
-    borderColor: '#232859',
-  },
-  searchIcon: {
-    marginRight: 12,
-  },
-  searchInput: {
-    flex: 1,
-    color: '#f4f6ff',
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  filterScroll: {
-    marginTop: 14,
-    marginHorizontal: -20,
-  },
-  filterContent: {
-    paddingHorizontal: 20,
-  },
-  filterChip: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: '#16193b',
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: '#232859',
-  },
-  filterChipActive: {
-    backgroundColor: '#8a6eff',
-    borderColor: '#a18aff',
-  },
-  filterText: {
-    color: '#8a90c6',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  filterTextActive: {
-    color: '#fff',
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 120,
-  },
-  centerBox: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  groupContainer: {
-    marginTop: 24,
-  },
-  groupLabel: {
-    color: '#8a90c6',
-    fontSize: 13,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 12,
-    marginLeft: 4,
-  },
-  cardList: {
-    backgroundColor: '#16193b',
-    borderRadius: 28,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: '#232859',
-  },
-  txItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#232859',
-  },
-  txItemLast: {
-    borderBottomWidth: 0,
-  },
-  iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  itemArrow: {
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  txInfo: {
-    flex: 1,
-  },
-  txCategory: {
-    color: '#f4f6ff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  txNote: {
-    color: '#636781',
-    fontSize: 12,
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  amountWrap: {
-    alignItems: 'flex-end',
-  },
-  txAmount: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  txTime: {
-    color: '#636781',
-    fontSize: 11,
-    marginTop: 4,
-    fontWeight: '600',
-  },
-  emptyState: {
-    padding: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyIconBox: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#16193b',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-  emptyIcon: {
-    fontSize: 34,
-  },
-  emptyTitle: {
-    color: '#f4f6ff',
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 8,
-  },
-  emptyText: {
-    color: '#636781',
-    textAlign: 'center',
-    fontSize: 14,
-    lineHeight: 22,
-    fontWeight: '500',
-  },
+  txIconWrap: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  categoryIcon: { fontSize: 20 },
+  txInfo: { flex: 1 },
+  txCategory: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  txDate: { fontSize: 12, fontWeight: '500' },
+  txAmountWrap: { alignItems: 'flex-end' },
+  txAmount: { fontSize: 16, fontWeight: '800' },
+  txNote: { fontSize: 11, marginTop: 4, maxWidth: 100 },
+  emptyContainer: { alignItems: 'center', marginTop: 100 },
+  emptyIcon: { fontSize: 50, marginBottom: 15 },
+  emptyTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8 },
+  emptyText: { textAlign: 'center', fontSize: 14, lineHeight: 22, fontWeight: '500' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modalCard: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24, borderTopWidth: 1 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitle: { fontSize: 20, fontWeight: '800' },
+  modalCloseText: { fontSize: 18, fontWeight: '300' },
+  walletList: { maxHeight: 400 },
+  walletItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 20, marginBottom: 12, borderWidth: 1 },
+  walletItemActive: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  walletIconBox: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  walletIcon: { fontSize: 22 },
+  walletInfo: { flex: 1 },
+  walletNameText: { fontSize: 16, fontWeight: '700' },
+  checkCircle: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  checkIcon: { color: '#fff', fontSize: 14, fontWeight: '800' },
 });
