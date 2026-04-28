@@ -36,7 +36,7 @@ import { useCurrency } from '../services/useCurrency';
 const { width } = Dimensions.get('window');
 const CATEGORY_COLORS = ['#8a6eff', '#5d3fd3', '#20ce8f', '#ff4d6d', '#ffb359', '#00d4aa', '#ff6b9d', '#a78bfa'];
 
-export default function Analytics() {
+function Analytics() {
   const { colors, isDark } = useTheme();
   const { code, usdToMyrRate } = useCurrency();
   const [weeklySpending, setWeeklySpending] = useState<number>(0);
@@ -57,7 +57,8 @@ export default function Analytics() {
 
   const loadData = useCallback(() => {
     let isMounted = true;
-    const idleHandle = requestIdleCallback(async () => {
+    
+    const fetchData = async () => {
       const isInitialLoad = !hasLoadedRef.current;
 
       if (!isInitialLoad && isMounted) {
@@ -65,6 +66,8 @@ export default function Analytics() {
       }
 
       try {
+        await new Promise(resolve => InteractionManager.runAfterInteractions(() => resolve(null)));
+
         const userId = getAuthSession()?.userId || '';
         if (!userId) return;
 
@@ -73,10 +76,9 @@ export default function Analytics() {
         const isAllWallets = !savedWalletId || savedWalletId === 'all';
         const currentWallet = isAllWallets ? null : (fetchedWallets.find(w => String(w.id) === String(savedWalletId)) || null);
         
-        if (isMounted) {
-          setWallets(fetchedWallets);
-          setSelectedWallet(currentWallet);
-        }
+        if (!isMounted) return;
+        setWallets(fetchedWallets);
+        setSelectedWallet(currentWallet);
 
         const walletId = currentWallet?.id;
 
@@ -92,22 +94,26 @@ export default function Analytics() {
         setCategorySpending(categories);
         setDaySpending(dayData);
         setSpendingTrend(trend);
+        hasLoadedRef.current = true;
       } catch (error) {
         console.error('Failed to load analytics:', error);
       } finally {
         if (isMounted) {
           if (isInitialLoad) {
-            hasLoadedRef.current = true;
             setIsLoading(false);
           }
           setIsMonthLoading(false);
         }
       }
-    });
+    };
+
+    if (!hasLoadedRef.current) {
+      setIsLoading(true);
+    }
+    fetchData();
 
     return () => {
       isMounted = false;
-      cancelIdleCallback(idleHandle);
     };
   }, [currentMonth]);
 
@@ -131,10 +137,6 @@ export default function Analytics() {
   };
 
   const totalMonthlySpending = categorySpending.reduce((sum, cat) => sum + cat.amount, 0);
-  const monthTitle = useMemo(
-    () => currentMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
-    [currentMonth],
-  );
 
   const calendarCells = useMemo(() => {
     const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
@@ -155,7 +157,6 @@ export default function Analytics() {
 
       const stats = dayMap.get(day);
       const net = stats ? stats.income - stats.expense : 0;
-      const netInDisplayCurrency = code === 'MYR' ? net * usdToMyrRate : net;
       const hasActivity = !!stats && (stats.income > 0 || stats.expense > 0);
       
       days.push(
@@ -171,15 +172,7 @@ export default function Analytics() {
     }
 
     return days;
-  }, [currentMonth, daySpending, code, usdToMyrRate, colors.success, colors.danger, colors.text, colors.textMuted]);
-
-  const goToPreviousMonth = () => {
-    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
-  };
-
-  const goToNextMonth = () => {
-    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
-  };
+  }, [currentMonth, daySpending, colors.success, colors.danger, colors.text, colors.textMuted]);
 
   const renderCurveGraph = () => {
     if (daySpending.length < 2) return null;
@@ -410,3 +403,5 @@ const styles = StyleSheet.create({
   checkCircle: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   checkIcon: { color: '#fff', fontSize: 14, fontWeight: '800' },
 });
+
+export default React.memo(Analytics);

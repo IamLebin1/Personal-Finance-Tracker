@@ -87,7 +87,7 @@ function formatCategoryLabel(category: string): string {
   return category.split(/[-_\s]+/).filter(Boolean).map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
 }
 
-export default function Dashboard({ navigation }: { navigation: any }) {
+function Dashboard({ navigation }: { navigation: any }) {
   const { colors, isDark } = useTheme();
   
   const [totalBalance, setTotalBalance] = useState(0);
@@ -99,6 +99,7 @@ export default function Dashboard({ navigation }: { navigation: any }) {
   const [totalBudget, setTotalBudget] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [profileData, setProfileData] = useState<any>(null);
+  const hasLoadedRef = useRef(false);
 
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
@@ -112,8 +113,11 @@ export default function Dashboard({ navigation }: { navigation: any }) {
 
   const refreshCallback = useCallback(() => {
     let isMounted = true;
-    const idleHandle = requestIdleCallback(async () => {
+    
+    const fetchData = async () => {
       try {
+        await new Promise(resolve => InteractionManager.runAfterInteractions(() => resolve(null)));
+        
         const fetchedWallets = await getWallets();
         const savedWalletId = await getSelectedWalletId();
         const isAllWallets = !savedWalletId || savedWalletId === 'all';
@@ -130,12 +134,13 @@ export default function Dashboard({ navigation }: { navigation: any }) {
           }).then(res => res.ok ? res.json() : null).catch(() => null)
         ]);
 
+        if (!isMounted) return;
+
         const sortedTransactions = [...allTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         const income = allTransactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);
         const expenses = allTransactions.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0);
         const budgetVal = budgetData.find(b => b.category === 'Total')?.amount || 0;
 
-        if (!isMounted) return;
         setProfileData(profData);
         setWallets(fetchedWallets);
         setSelectedWallet(currentWallet);
@@ -146,15 +151,19 @@ export default function Dashboard({ navigation }: { navigation: any }) {
         setRecentTransactions(sortedTransactions.slice(0, 5));
         setCategories(categoryData.slice(0, 4));
         setMonthTrend(calculateMonthOverMonthTrend(allTransactions));
+        hasLoadedRef.current = true;
       } catch (err) {
         console.error(err);
       } finally {
         if (isMounted) setIsLoading(false);
       }
-    });
+    };
 
-    setIsLoading(true);
-    return () => { isMounted = false; cancelIdleCallback(idleHandle); };
+    if (!hasLoadedRef.current) {
+      setIsLoading(true);
+    }
+    fetchData();
+    return () => { isMounted = false; };
   }, []);
 
   const handleSelectWallet = async (wallet: Wallet) => {
@@ -517,3 +526,5 @@ const styles = StyleSheet.create({
   modalSaveBtn: { flex: 2, paddingVertical: 14, alignItems: 'center', borderRadius: 16 },
   modalSaveText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
+
+export default React.memo(Dashboard);

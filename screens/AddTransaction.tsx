@@ -210,10 +210,8 @@ export default function AddTransaction({ navigation, route }: Props) {
       Animated.timing(burstScale, { toValue: 1, duration: 100, useNativeDriver: true }),
     ]).start();
 
-    // Trigger navigation almost immediately (don't wait for animation to finish)
-    setTimeout(() => {
-      navigation.goBack();
-    }, 80);
+    // Trigger navigation immediately for instant responsiveness
+    navigation.goBack();
   };
 
   const onKeypadTap = (key: KeypadKey) => {

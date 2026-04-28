@@ -61,7 +61,7 @@ function ThemeSegmentedToggle({ theme, onToggle, colors }: { theme: 'dark' | 'li
   );
 }
 
-export default function Profile() {
+function Profile() {
   const navigation = useNavigation();
   const { theme, toggleTheme, colors, isDark } = useTheme();
   const [isLoading, setIsLoading] = useState(true);
@@ -70,13 +70,17 @@ export default function Profile() {
   const [isAvatarModalVisible, setIsAvatarModalVisible] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
   const [photoUrlInput, setPhotoUrlInput] = useState('');
+  const hasLoadedRef = useRef(false);
   
   const session = getAuthSession();
 
   const loadData = useCallback(() => {
     let isMounted = true;
-    const idleHandle = requestIdleCallback(async () => {
+    
+    const fetchData = async () => {
       try {
+        await new Promise(resolve => InteractionManager.runAfterInteractions(() => resolve(null)));
+        
         const txs = await getTransactionsByUser();
         const income = txs.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
         const expense = txs.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
@@ -92,16 +96,21 @@ export default function Profile() {
           if (data.profilePic && data.profilePic.startsWith('http')) {
             setPhotoUrlInput(data.profilePic);
           }
+          hasLoadedRef.current = true;
         }
       } catch (error) {
         console.error('Failed to load profile data:', error);
       } finally {
         if (isMounted) setIsLoading(false);
       }
-    });
+    };
 
-    setIsLoading(true);
-    return () => { isMounted = false; cancelIdleCallback(idleHandle); };
+    if (!hasLoadedRef.current) {
+      setIsLoading(true);
+    }
+    fetchData();
+
+    return () => { isMounted = false; };
   }, [session?.token]);
 
   useFocusEffect(loadData);
@@ -347,3 +356,5 @@ const styles = StyleSheet.create({
   avatarOption: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
   avatarOptionText: { fontSize: 32 },
 });
+
+export default React.memo(Profile);
