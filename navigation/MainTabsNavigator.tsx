@@ -31,6 +31,12 @@ function PageWrapper({
   const focusListeners = useRef<Array<() => void>>([]);
   const blurListeners = useRef<Array<() => void>>([]);
   const pager = useContext(PagerContext);
+  
+  // Use ref to keep track of current focus without triggering useMemo re-runs
+  const isFocusedRef = useRef(isFocused);
+  useEffect(() => {
+    isFocusedRef.current = isFocused;
+  }, [isFocused]);
 
   const mockedNavigation = useMemo(() => ({
     ...navigation,
@@ -58,8 +64,8 @@ function PageWrapper({
       }
       return navigation.removeListener(type, callback);
     },
-    isFocused: () => isFocused,
-  }), [navigation, isFocused, pager]);
+    isFocused: () => isFocusedRef.current,
+  }), [navigation, pager]); // Removed isFocused from dependencies
 
   useEffect(() => {
     if (isFocused) {
@@ -96,8 +102,6 @@ export default function MainTabsNavigator({ navigation }: any) {
     }
   };
 
-  const descriptors = {};
-
   const onTabPress = (idx: number) => {
     setIndex(idx);
     pagerRef.current?.setPage(idx);
@@ -112,7 +116,7 @@ export default function MainTabsNavigator({ navigation }: any) {
         navigation.navigate(name, params);
       }
     },
-    emit: ({ type, target }: { type: string; target: string }) => {
+    emit: ({ type }: { type: string }) => {
       if (type === 'tabPress') {
         return { defaultPrevented: false };
       }
@@ -129,7 +133,8 @@ export default function MainTabsNavigator({ navigation }: any) {
           style={styles.pager}
           initialPage={0}
           onPageSelected={(e) => {
-            setIndex(e.nativeEvent.position);
+            const newIndex = e.nativeEvent.position;
+            setIndex(newIndex);
           }}
         >
           <View key="Dashboard" style={styles.page}>
@@ -137,7 +142,7 @@ export default function MainTabsNavigator({ navigation }: any) {
               component={Dashboard} 
               isFocused={index === 0} 
               navigation={navigation} 
-              route={{ name: 'Dashboard', key: 'Dashboard' }} 
+              route={routes[0]} 
             />
           </View>
           <View key="History" style={styles.page}>
@@ -145,7 +150,7 @@ export default function MainTabsNavigator({ navigation }: any) {
               component={History} 
               isFocused={index === 1} 
               navigation={navigation} 
-              route={{ name: 'History', key: 'History' }} 
+              route={routes[1]} 
             />
           </View>
           <View key="Analytics" style={styles.page}>
@@ -153,7 +158,7 @@ export default function MainTabsNavigator({ navigation }: any) {
               component={Analytics} 
               isFocused={index === 2} 
               navigation={navigation} 
-              route={{ name: 'Analytics', key: 'Analytics' }} 
+              route={routes[2]} 
             />
           </View>
           <View key="Profile" style={styles.page}>
@@ -161,14 +166,14 @@ export default function MainTabsNavigator({ navigation }: any) {
               component={Profile} 
               isFocused={index === 3} 
               navigation={navigation} 
-              route={{ name: 'Profile', key: 'Profile' }} 
+              route={routes[3]} 
             />
           </View>
         </PagerView>
         
         <FinanceTabBar
           state={state as any}
-          descriptors={descriptors as any}
+          descriptors={{} as any}
           navigation={mockTabBarNavigation as any}
         />
       </View>

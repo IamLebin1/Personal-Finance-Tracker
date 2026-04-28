@@ -21,8 +21,35 @@ export interface DaySpending {
   expense: number;
 }
 
+let _transactionCache: {
+  data: Transaction[];
+  walletId?: string;
+  timestamp: number;
+} | null = null;
+
+const CACHE_TTL = 3000; // 3 seconds
+
+async function getCachedTransactions(walletId?: string): Promise<Transaction[]> {
+  const now = Date.now();
+  if (_transactionCache && _transactionCache.walletId === walletId && (now - _transactionCache.timestamp) < CACHE_TTL) {
+    return _transactionCache.data;
+  }
+  
+  const data = await getTransactionsByUser(undefined, walletId);
+  _transactionCache = {
+    data,
+    walletId,
+    timestamp: now
+  };
+  return data;
+}
+
+export function clearTransactionCache() {
+  _transactionCache = null;
+}
+
 export async function getDashboardSummary(_userId?: string, walletId?: string): Promise<DashboardSummary> {
-  const all = await getTransactionsByUser(undefined, walletId);
+  const all = await getCachedTransactions(walletId);
 
   const totalBalance = all.reduce((acc, tx) => {
     return tx.type === 'income' ? acc + tx.amount : acc - tx.amount;
@@ -37,7 +64,7 @@ export async function getDashboardSummary(_userId?: string, walletId?: string): 
 }
 
 export async function getSpendingByCategory(walletId?: string): Promise<CategorySpending[]> {
-  const transactions = await getTransactionsByUser(undefined, walletId);
+  const transactions = await getCachedTransactions(walletId);
   const expenses = transactions.filter(tx => tx.type === 'expense');
   
   const categoryMap = new Map<string, number>();
@@ -59,7 +86,7 @@ export async function getSpendingByCategory(walletId?: string): Promise<Category
 }
 
 export async function getSpendingByDate(walletId?: string, monthDate?: Date): Promise<DaySpending[]> {
-  const transactions = await getTransactionsByUser(undefined, walletId);
+  const transactions = await getCachedTransactions(walletId);
   
   const targetDate = monthDate || new Date();
   const year = targetDate.getFullYear();
@@ -93,7 +120,7 @@ export async function getSpendingByDate(walletId?: string, monthDate?: Date): Pr
 }
 
 export async function getWeeklySpending(walletId?: string): Promise<number> {
-  const transactions = await getTransactionsByUser(undefined, walletId);
+  const transactions = await getCachedTransactions(walletId);
   const expenses = transactions.filter(tx => tx.type === 'expense');
   
   const now = new Date();
@@ -105,7 +132,7 @@ export async function getWeeklySpending(walletId?: string): Promise<number> {
 }
 
 export async function getMonthlySpendingTrendPercent(walletId?: string, monthDate?: Date): Promise<number> {
-  const transactions = await getTransactionsByUser(undefined, walletId);
+  const transactions = await getCachedTransactions(walletId);
   const expenses = transactions.filter(tx => tx.type === 'expense');
   
   const targetDate = monthDate || new Date();

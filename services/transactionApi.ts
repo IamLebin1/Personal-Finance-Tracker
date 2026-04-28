@@ -1,6 +1,7 @@
 import { config } from '../config/appConfig';
 import type { CreateTransactionInput, Transaction } from '../types/transaction';
 import { getAuthSession } from './authSession';
+import { clearTransactionCache } from './transactionService';
 
 type TransactionUpdate = Partial<Omit<Transaction, 'id' | 'userId'>>;
 
@@ -78,6 +79,7 @@ export async function insertTransaction(input: CreateTransactionInput): Promise<
 
   const payload = await parseResponse<{ id: string }>(response);
   const session = getAuthSession();
+  clearTransactionCache();
 
   return {
     ...input,
@@ -115,6 +117,7 @@ export async function updateTransaction(
   });
 
   await parseResponse<{ affected: number }>(response);
+  clearTransactionCache();
 
   if (!fallback) {
     return null;
@@ -141,4 +144,5 @@ export async function deleteTransaction(id: string): Promise<void> {
   });
 
   await parseResponse<{ affected: number }>(response);
+  clearTransactionCache();
 }

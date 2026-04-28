@@ -23,12 +23,13 @@ import type { Transaction, Wallet } from '../types/transaction';
 import { getCategoryData } from '../constants/categories';
 import { useTheme } from '../context/ThemeContext';
 
-export default function History() {
+function History() {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
 
@@ -41,34 +42,42 @@ export default function History() {
 
   const loadData = useCallback(() => {
     let isMounted = true;
-    const idleHandle = requestIdleCallback(async () => {
+    
+    const fetchData = async () => {
       try {
+        await new Promise(resolve => InteractionManager.runAfterInteractions(() => resolve(null)));
+
         const fetchedWallets = await getWallets();
         const savedWalletId = await getSelectedWalletId();
         const isAllWallets = !savedWalletId || savedWalletId === 'all';
         const currentWallet = isAllWallets ? null : (fetchedWallets.find(w => String(w.id) === String(savedWalletId)) || null);
         
-        if (isMounted) {
-          setWallets(fetchedWallets);
-          setSelectedWallet(currentWallet);
-        }
+        if (!isMounted) return;
+        setWallets(fetchedWallets);
+        setSelectedWallet(currentWallet);
 
         const rows = await getTransactionsByUser(undefined, currentWallet?.id);
         if (isMounted) {
           setTransactions(rows);
           setFilteredTransactions(rows);
+          hasLoadedRef.current = true;
         }
+      } catch (err) {
+        console.error('Failed to load history:', err);
       } finally {
         if (isMounted) {
           setIsLoading(false);
         }
       }
-    });
+    };
 
-    setIsLoading(true);
+    if (!hasLoadedRef.current) {
+      setIsLoading(true);
+    }
+    fetchData();
+
     return () => {
       isMounted = false;
-      cancelIdleCallback(idleHandle);
     };
   }, []);
 
@@ -297,3 +306,5 @@ const styles = StyleSheet.create({
   checkCircle: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   checkIcon: { color: '#fff', fontSize: 14, fontWeight: '800' },
 });
+
+export default React.memo(History);
