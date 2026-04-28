@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -12,23 +12,125 @@ import {
   KeyboardAvoidingView,
   Platform,
   Switch,
+  Modal,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { config } from '../config/appConfig';
 import { getAuthSession } from '../services/authSession';
+import * as pinService from '../services/pinService';
+import { DarkPalette } from '../constants/theme';
 
 export default function SecuritySettings() {
   const navigation = useNavigation();
   const [isSaving, setIsSaving] = useState(false);
   
+  // Auth Session
+  const session = getAuthSession();
+  const userId = session?.userId || '';
+
   // Password State
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // PIN State
+  const [isPinEnabled, setIsPinEnabled] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [confirmPinInput, setConfirmPinInput] = useState('');
+  const [pinStep, setPinStep] = useState<'enter' | 'confirm'>('enter');
+
   // Simulated Security Toggles
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [isBiometricsEnabled, setIsBiometricsEnabled] = useState(true);
+
+  useEffect(() => {
+    const loadPinStatus = async () => {
+      if (!userId) return;
+      const enabled = await pinService.isPinEnabled(userId);
+      setIsPinEnabled(enabled);
+    };
+    loadPinStatus();
+  }, [userId]);
+
+  const handleTogglePin = async (value: boolean) => {
+    if (value) {
+      setPinStep('enter');
+      setPinInput('');
+      setConfirmPinInput('');
+      setShowPinModal(true);
+    } else {
+      if (!userId) return;
+      await pinService.setPinEnabled(userId, false);
+      setIsPinEnabled(false);
+      Alert.alert('PIN Disabled', 'PIN access has been turned off.');
+    }
+  };
+
+  const handleKeyPress = (num: string) => {
+    if (pinStep === 'enter') {
+      if (pinInput.length < 4) {
+        const newVal = pinInput + num;
+        setPinInput(newVal);
+        if (newVal.length === 4) {
+          setTimeout(() => setPinStep('confirm'), 300);
+        }
+      }
+    } else {
+      if (confirmPinInput.length < 4) {
+        const newVal = confirmPinInput + num;
+        setConfirmPinInput(newVal);
+        if (newVal.length === 4) {
+          handleCompletePin(newVal);
+        }
+      }
+    }
+  };
+
+  const handleBackspace = () => {
+    if (pinStep === 'enter') {
+      setPinInput(prev => prev.slice(0, -1));
+    } else {
+      if (confirmPinInput.length === 0) {
+        setPinStep('enter');
+      } else {
+        setConfirmPinInput(prev => prev.slice(0, -1));
+      }
+    }
+  };
+
+  const handleCompletePin = async (finalConfirm: string) => {
+    if (!userId) return;
+    if (pinInput === finalConfirm) {
+      await pinService.setPin(userId, pinInput);
+      await pinService.setPinEnabled(userId, true);
+      setIsPinEnabled(true);
+      setShowPinModal(false);
+      Alert.alert('Success', 'PIN has been set successfully.');
+    } else {
+      Alert.alert('Mismatch', 'PINs do not match. Please try again.');
+      setPinStep('enter');
+      setPinInput('');
+      setConfirmPinInput('');
+    }
+  };
+
+  const renderDot = (index: number, val: string) => {
+    const isActive = val.length > index;
+    return (
+      <View key={index} style={[styles.modalDot, isActive && styles.modalDotActive]} />
+    );
+  };
+
+  const renderKey = (val: string) => (
+    <TouchableOpacity 
+      key={val} 
+      style={styles.modalKey} 
+      onPress={() => handleKeyPress(val)}
+    >
+      <Text style={styles.modalKeyText}>{val}</Text>
+    </TouchableOpacity>
+  );
 
   const handleChangePassword = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
@@ -89,6 +191,37 @@ export default function SecuritySettings() {
       <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         
+        <Text style={styles.sectionTitle}>PIN Access</Text>
+        <View style={styles.card}>
+          <View style={styles.switchRow}>
+            <View style={styles.switchInfo}>
+              <Text style={styles.switchLabel}>Enable PIN Lock</Text>
+              <Text style={styles.switchSub}>Require a PIN to access the application</Text>
+            </View>
+            <Switch
+              value={isPinEnabled}
+              onValueChange={handleTogglePin}
+              trackColor={{ false: '#0a0c1f', true: DarkPalette.primary }}
+              thumbColor="#fff"
+            />
+          </View>
+          
+          {isPinEnabled && (
+            <TouchableOpacity 
+              activeOpacity={0.7}
+              style={styles.changePinButton}
+              onPress={() => {
+                setPinStep('enter');
+                setPinInput('');
+                setConfirmPinInput('');
+                setShowPinModal(true);
+              }}
+            >
+              <Text style={styles.changePinText}>Change Security PIN</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         <Text style={styles.sectionTitle}>Change Password</Text>
         <View style={styles.card}>
           <Text style={styles.label}>CURRENT PASSWORD</Text>
@@ -161,11 +294,65 @@ export default function SecuritySettings() {
 
         <View style={styles.infoBox}>
           <Text style={styles.infoText}>
-            🔒 Your data is encrypted and stored securely. We recommend using a unique password for this application.
+            🔒 Your security is our priority. PINs are stored locally on your device and are never shared.
           </Text>
         </View>
 
       </ScrollView>
+
+      <Modal
+        visible={showPinModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPinModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalIndicator} />
+            <Text style={styles.modalTitle}>
+              {pinStep === 'enter' ? 'Create Security PIN' : 'Confirm Security PIN'}
+            </Text>
+            <Text style={styles.modalSub}>
+              {pinStep === 'enter' 
+                ? 'Choose a 4-digit PIN for access' 
+                : 'Repeat the PIN to verify'}
+            </Text>
+            
+            <View style={styles.modalDotsWrapper}>
+              {[0, 1, 2, 3].map(i => renderDot(i, pinStep === 'enter' ? pinInput : confirmPinInput))}
+            </View>
+
+            <View style={styles.modalKeypad}>
+              <View style={styles.modalRow}>
+                {['1', '2', '3'].map(renderKey)}
+              </View>
+              <View style={styles.modalRow}>
+                {['4', '5', '6'].map(renderKey)}
+              </View>
+              <View style={styles.modalRow}>
+                {['7', '8', '9'].map(renderKey)}
+              </View>
+              <View style={styles.modalRow}>
+                <TouchableOpacity 
+                  activeOpacity={0.6}
+                  style={styles.modalKey} 
+                  onPress={() => setShowPinModal(false)}
+                >
+                  <Text style={[styles.modalKeyText, { fontSize: 13, color: DarkPalette.danger, fontWeight: '700' }]}>CLOSE</Text>
+                </TouchableOpacity>
+                {renderKey('0')}
+                <TouchableOpacity 
+                  activeOpacity={0.6}
+                  style={styles.modalKey} 
+                  onPress={handleBackspace}
+                >
+                  <Text style={[styles.modalKeyText, { color: DarkPalette.primary }]}>⌫</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -258,6 +445,21 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: '500',
   },
+  changePinButton: {
+    marginTop: 20,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(138, 110, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(138, 110, 255, 0.15)',
+    alignItems: 'center',
+  },
+  changePinText: {
+    color: '#8a6eff',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
   infoBox: {
     backgroundColor: 'rgba(138, 110, 255, 0.05)',
     padding: 16,
@@ -271,5 +473,83 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: 'center',
     fontWeight: '500',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#070817',
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 40,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  modalIndicator: {
+    width: 40,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 2,
+    marginBottom: 24,
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  modalSub: {
+    color: '#8a90c6',
+    fontSize: 15,
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 32,
+  },
+  modalDotsWrapper: {
+    flexDirection: 'row',
+    marginBottom: 40,
+    gap: 18,
+  },
+  modalDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: 'transparent',
+  },
+  modalDotActive: {
+    backgroundColor: '#8a6eff',
+    borderColor: '#8a6eff',
+    transform: [{ scale: 1.15 }],
+  },
+  modalKeypad: {
+    width: '100%',
+    gap: 14,
+  },
+  modalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 14,
+  },
+  modalKey: {
+    flex: 1,
+    aspectRatio: 1.6,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  modalKeyText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#fff',
   },
 });
