@@ -10,9 +10,11 @@ import {
   Text, 
   TextInput, 
   View, 
+  Image,
   PanResponder, 
   Platform 
 } from 'react-native';
+import { launchCamera } from 'react-native-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { insertTransaction } from '../services/transactionApi';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
@@ -22,6 +24,10 @@ import { getSelectedWalletId } from '../services/walletService';
 import type { TransactionType, Wallet } from '../types/transaction';
 import { CATEGORIES } from '../constants/categories';
 import { useTheme } from '../context/ThemeContext';
+
+async function uploadReceiptToCloud(fileUri: string): Promise<string> {
+  return Promise.resolve(fileUri);
+}
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddTransaction'>;
 
@@ -119,9 +125,27 @@ export default function AddTransaction({ navigation, route }: Props) {
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [isSaving, setIsSaving] = useState(false);
+  const [receiptUri, setReceiptUri] = useState<string | null>(null);
+  const [receiptUrl, setReceiptUrl] = useState<string>('');
   const [calcAccumulator, setCalcAccumulator] = useState<number | null>(null);
   const [calcOperator, setCalcOperator] = useState<'+' | '-' | null>(null);
   const [tabsWidth, setTabsWidth] = useState(0);
+
+  const onSnapReceipt = async () => {
+    try {
+      const result = await launchCamera({ mediaType: 'photo', quality: 0.7 });
+      if (result.didCancel) return;
+      if (result.errorCode) throw new Error(result.errorMessage || 'Camera error');
+      const asset = result.assets?.[0];
+      if (asset?.uri) {
+        setReceiptUri(asset.uri);
+        const url = await uploadReceiptToCloud(asset.uri);
+        setReceiptUrl(url);
+      }
+    } catch (err: any) {
+      Alert.alert('Receipt Error', err.message || 'Could not snap receipt.');
+    }
+  };
 
   const tabAnim = useRef(new Animated.Value(0)).current;
   const calcTranslateY = useRef(new Animated.Value(windowSize.height)).current;
@@ -270,7 +294,7 @@ export default function AddTransaction({ navigation, route }: Props) {
         category: selectedCategory,
         date: saveDate.toISOString(),
         note: note.trim(),
-        receiptUrl: '',
+        receiptUrl: receiptUrl || '',
         userId: session.userId,
         walletId: selectedWalletId || undefined,
       });
@@ -363,6 +387,20 @@ export default function AddTransaction({ navigation, route }: Props) {
               </Pressable>
             ))}
           </View>
+
+          <Pressable
+            style={styles.snapReceiptButton}
+            onPress={onSnapReceipt}
+            disabled={isSaving}
+          >
+            <Text style={styles.snapReceiptButtonText}>📸 Snap Receipt</Text>
+          </Pressable>
+          {receiptUri ? (
+            <View style={styles.receiptPreviewWrap}>
+              <Image source={{ uri: receiptUri }} style={styles.receiptPreviewImage} />
+              <Text style={[styles.receiptPreviewLabel, { color: colors.textMuted }]}>Receipt Preview</Text>
+            </View>
+          ) : null}
 
           <Pressable style={[styles.confirmBtn, { backgroundColor: colors.primary, shadowColor: colors.primary }, isSaving && styles.confirmBtnDisabled]} onPress={onSave} disabled={isSaving}>
             <Text style={styles.confirmBtnText}>{isSaving ? 'Processing...' : 'Confirm Transaction'}</Text>
@@ -552,4 +590,35 @@ const styles = StyleSheet.create({
   checkCircle: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   checkIcon: { color: '#fff', fontSize: 12, fontWeight: '800' },
   modalTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
+  snapReceiptButton: {
+    marginTop: 8,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#6f53ff',
+    backgroundColor: '#232756',
+  },
+  snapReceiptButtonText: {
+    color: '#b7bfff',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  receiptPreviewWrap: {
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  receiptPreviewImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+  },
+  receiptPreviewLabel: {
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: '600',
+  },
 });
