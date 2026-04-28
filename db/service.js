@@ -1,4 +1,5 @@
 const express = require('express');
+const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const crypto = require('crypto');
 
@@ -6,6 +7,7 @@ const path = require('path');
 const app = express();
 const DB = path.join(__dirname, 'finance_tracker.sqlite');
 
+app.use(cors());
 app.use(express.json());
 
 // Global logger
@@ -414,7 +416,7 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/auth/profile', requireAuth, (req, res) => {
   const db = openDb();
-  db.get('SELECT id, username, email, phone, createdAt FROM users WHERE id = ?', [req.auth.userId], (err, row) => {
+  db.get('SELECT id, username, email, phone, profilePic, createdAt FROM users WHERE id = ?', [req.auth.userId], (err, row) => {
     closeDb(db);
     if (err) return res.status(500).json({ message: 'Database error' });
     if (!row) return res.status(404).json({ message: 'User not found' });

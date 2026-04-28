@@ -37,13 +37,11 @@ export default function RootStackNavigator() {
     const checkSession = async () => {
       try {
         const session = await loadAuthSession();
-        if (session && session.token) {
-          setIsAuthenticated(true);
-        }
+        setIsAuthenticated(!!(session && session.token));
       } catch (err) {
         console.error('Session check error:', err);
+        setIsAuthenticated(false);
       } finally {
-        setIsAuthenticated(!!(await loadAuthSession())); 
         setIsLoading(false);
       }
     };

@@ -41,7 +41,7 @@ export default function History() {
 
   const loadData = useCallback(() => {
     let isMounted = true;
-    const task = InteractionManager.runAfterInteractions(async () => {
+    const idleHandle = requestIdleCallback(async () => {
       try {
         const fetchedWallets = await getWallets();
         const savedWalletId = await getSelectedWalletId();
@@ -68,7 +68,7 @@ export default function History() {
     setIsLoading(true);
     return () => {
       isMounted = false;
-      task.cancel();
+      cancelIdleCallback(idleHandle);
     };
   }, []);
 

@@ -15,7 +15,8 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  Alert
+  Alert,
+  Image
 } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop, Rect, Circle } from 'react-native-svg';
 import { getAuthSession } from '../services/authSession';
@@ -28,6 +29,7 @@ import type { CategorySpending } from '../services/transactionService';
 import { getCategoryData } from '../constants/categories';
 import { useTheme } from '../context/ThemeContext';
 import { getBudgets } from '../services/budgetApi';
+import { config } from '../config/appConfig';
 
 const { width } = Dimensions.get('window');
 
@@ -110,7 +112,7 @@ export default function Dashboard({ navigation }: { navigation: any }) {
 
   const refreshCallback = useCallback(() => {
     let isMounted = true;
-    const task = InteractionManager.runAfterInteractions(async () => {
+    const idleHandle = requestIdleCallback(async () => {
       try {
         const fetchedWallets = await getWallets();
         const savedWalletId = await getSelectedWalletId();
@@ -123,9 +125,9 @@ export default function Dashboard({ navigation }: { navigation: any }) {
           getTransactionsByUser(undefined, currentWallet?.id),
           getSpendingByCategory(currentWallet?.id),
           getBudgets(currentMonthKey),
-          fetch(`${require('../config/appConfig').config.apiBaseUrl}/api/auth/profile`, {
+          fetch(`${config.apiBaseUrl}/api/auth/profile`, {
             headers: { Authorization: `Bearer ${getAuthSession()?.token}` }
-          }).then(res => res.json())
+          }).then(res => res.ok ? res.json() : null).catch(() => null)
         ]);
 
         const sortedTransactions = [...allTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -152,7 +154,7 @@ export default function Dashboard({ navigation }: { navigation: any }) {
     });
 
     setIsLoading(true);
-    return () => { isMounted = false; task.cancel(); };
+    return () => { isMounted = false; cancelIdleCallback(idleHandle); };
   }, []);
 
   const handleSelectWallet = async (wallet: Wallet) => {

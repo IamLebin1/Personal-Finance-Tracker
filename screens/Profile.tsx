@@ -75,7 +75,7 @@ export default function Profile() {
 
   const loadData = useCallback(() => {
     let isMounted = true;
-    const task = InteractionManager.runAfterInteractions(async () => {
+    const idleHandle = requestIdleCallback(async () => {
       try {
         const txs = await getTransactionsByUser();
         const income = txs.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
@@ -101,7 +101,7 @@ export default function Profile() {
     });
 
     setIsLoading(true);
-    return () => { isMounted = false; task.cancel(); };
+    return () => { isMounted = false; cancelIdleCallback(idleHandle); };
   }, [session?.token]);
 
   useFocusEffect(loadData);

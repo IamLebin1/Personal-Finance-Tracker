@@ -31,12 +31,14 @@ import { getWallets } from '../services/walletApi';
 import { getSelectedWalletId, setSelectedWalletId } from '../services/walletService';
 import type { Transaction, Wallet } from '../types/transaction';
 import { useTheme } from '../context/ThemeContext';
+import { useCurrency } from '../services/useCurrency';
 
 const { width } = Dimensions.get('window');
 const CATEGORY_COLORS = ['#8a6eff', '#5d3fd3', '#20ce8f', '#ff4d6d', '#ffb359', '#00d4aa', '#ff6b9d', '#a78bfa'];
 
 export default function Analytics() {
   const { colors, isDark } = useTheme();
+  const { code, usdToMyrRate } = useCurrency();
   const [weeklySpending, setWeeklySpending] = useState<number>(0);
   const [categorySpending, setCategorySpending] = useState<CategorySpending[]>([]);
   const [daySpending, setDaySpending] = useState<DaySpending[]>([]);
@@ -55,7 +57,7 @@ export default function Analytics() {
 
   const loadData = useCallback(() => {
     let isMounted = true;
-    const task = InteractionManager.runAfterInteractions(async () => {
+    const idleHandle = requestIdleCallback(async () => {
       const isInitialLoad = !hasLoadedRef.current;
 
       if (!isInitialLoad && isMounted) {
@@ -105,7 +107,7 @@ export default function Analytics() {
 
     return () => {
       isMounted = false;
-      task.cancel();
+      cancelIdleCallback(idleHandle);
     };
   }, [currentMonth]);
 
@@ -139,13 +141,13 @@ export default function Analytics() {
     const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
     const dayMap = new Map(daySpending.map(d => [d.day, d]));
     const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
-    const cells = [];
+    const days = [];
 
     for (let cellIndex = 0; cellIndex < totalCells; cellIndex++) {
       const day = cellIndex - firstDay + 1;
 
       if (day < 1 || day > daysInMonth) {
-        cells.push(
+        days.push(
           <View key={`empty-${cellIndex}`} style={[styles.calendarDay, styles.calendarDayEmpty]} />,
         );
         continue;
@@ -168,8 +170,8 @@ export default function Analytics() {
       );
     }
 
-    return cells;
-  }, [currentMonth, daySpending, code, usdToMyrRate]);
+    return days;
+  }, [currentMonth, daySpending, code, usdToMyrRate, colors.success, colors.danger, colors.text, colors.textMuted]);
 
   const goToPreviousMonth = () => {
     setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));

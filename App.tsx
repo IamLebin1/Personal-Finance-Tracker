@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RootStackNavigator from './navigation/RootStackNavigator';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { loadCurrencyPreference, startCurrencyRateFeed, stopCurrencyRateFeed } from './services/currencyService';
 
 function AppContent() {
   const { isDark, colors } = useTheme();

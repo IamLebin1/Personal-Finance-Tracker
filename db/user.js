@@ -151,8 +151,10 @@ app.post('/api/auth/register', (req, res) => {
 // Login
 app.post('/api/auth/login', (req, res) => {
   const { username, password } = req.body || {};
+  console.log(`Login attempt for username: ${username}`);
 
   if (!username || !password) {
+    console.log('Login failed: Missing username or password');
     return res.status(400).json({ message: 'username and password are required' });
   }
 
@@ -162,15 +164,24 @@ app.post('/api/auth/login', (req, res) => {
     [username.trim()],
     (err, row) => {
       if (err) {
+        console.error(`Database error during login: ${err.message}`);
         closeDb(db);
         return res.status(500).json({ message: 'Database error' });
       }
 
-      if (!row || !verifyPassword(password, row.password)) {
+      if (!row) {
+        console.log(`Login failed: User "${username}" not found`);
         closeDb(db);
         return res.status(401).json({ message: 'Invalid credentials' });
       }
 
+      if (!verifyPassword(password, row.password)) {
+        console.log(`Login failed: Incorrect password for user "${username}"`);
+        closeDb(db);
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+
+      console.log(`Login successful for user: ${username} (ID: ${row.id})`);
       const token = generateToken();
       db.run(
         'INSERT INTO sessions(token, userId, createdAt) VALUES (?, ?, ?)',
