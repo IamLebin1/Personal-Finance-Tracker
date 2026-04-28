@@ -95,9 +95,17 @@ const RegisterScreen = ({ navigation }: Props) => {
       }),
     })
       .then(async response => {
-        const responseJson = await response.json();
+        const rawResponse = await response.text();
+        let responseJson: { message?: string } | null = null;
+
+        try {
+          responseJson = rawResponse ? JSON.parse(rawResponse) : null;
+        } catch {
+          responseJson = null;
+        }
+
         if (!response.ok) {
-          throw new Error(responseJson?.message || 'Registration failed');
+          throw new Error(responseJson?.message || rawResponse || 'Registration failed');
         }
         return responseJson;
       })

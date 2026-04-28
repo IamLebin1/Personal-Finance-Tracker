@@ -16,6 +16,7 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import type { Transaction } from '../types/transaction';
 import { getTransactionsByUser } from '../services/transactionApi';
 import { formatCurrency } from '../services/transactionService';
+import { useCurrency } from '../services/useCurrency';
 
 function formatCategoryLabel(category: string): string {
   return category
@@ -38,6 +39,7 @@ function getGroupLabel(dateStr: string): string {
 }
 
 export default function History() {
+  useCurrency();
   // 1. All hooks at the top
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);

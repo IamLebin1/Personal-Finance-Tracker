@@ -15,16 +15,12 @@ import { config } from '../config/appConfig';
 import { clearAuthSession, getAuthSession } from '../services/authSession';
 import { getTransactionsByUser } from '../services/transactionApi';
 import { formatCurrency } from '../services/transactionService';
+import { useCurrency } from '../services/useCurrency';
+import type { CurrencyCode } from '../services/currencyService';
 
 const accountRows = [
   { id: 'details', icon: '👤', title: 'Personal Details', subtitle: 'Name, Email, Phone' },
   { id: 'security', icon: '🔒', title: 'Security & Credentials', subtitle: 'Password, 2FA, FaceID' },
-];
-
-const generalRows = [
-  { id: 'notifications', icon: '🔔', title: 'Notifications', subtitle: 'Alerts, Reminders' },
-  { id: 'currency', icon: '💵', title: 'Default Currency', subtitle: 'USD ($)' },
-  { id: 'language', icon: '🌐', title: 'Language', subtitle: 'English' },
 ];
 
 const supportRows = [
@@ -36,7 +32,19 @@ export default function Profile() {
   const navigation = useNavigation();
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState({ count: 0, totalIncome: 0, totalExpense: 0 });
+  const { code, usdToMyrRate, socketConnected, setPreferredCurrency } = useCurrency();
   const session = getAuthSession();
+
+  const generalRows = [
+    { id: 'notifications', icon: '🔔', title: 'Notifications', subtitle: 'Alerts, Reminders' },
+    {
+      id: 'currency',
+      icon: '💵',
+      title: 'Default Currency',
+      subtitle: `${code} (${code === 'USD' ? '$' : 'RM'}) • 1 USD = ${usdToMyrRate.toFixed(4)} MYR${socketConnected ? '' : ' (offline)'}`,
+    },
+    { id: 'language', icon: '🌐', title: 'Language', subtitle: 'English' },
+  ];
 
   const loadProfileStats = useCallback(() => {
     let isMounted = true;
@@ -105,6 +113,22 @@ export default function Profile() {
       navigation.navigate('ProfileDetails' as never);
     } else if (item.id === 'security') {
       navigation.navigate('SecuritySettings' as never);
+    } else if (item.id === 'currency') {
+      Alert.alert('Default Currency', 'Choose how money is displayed in the app.', [
+        {
+          text: 'USD ($)',
+          onPress: () => {
+            void setPreferredCurrency('USD' satisfies CurrencyCode);
+          },
+        },
+        {
+          text: 'MYR (RM)',
+          onPress: () => {
+            void setPreferredCurrency('MYR' satisfies CurrencyCode);
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
     } else {
       Alert.alert(item.title, `The ${item.title.toLowerCase()} feature will be available in the next update.`);
     }
