@@ -208,6 +208,72 @@ function Analytics() {
     );
   };
 
+  const renderPieChart = () => {
+    if (categorySpending.length === 0) return null;
+
+    const radius = 80;
+    const strokeWidth = 30;
+    const center = radius + strokeWidth / 2;
+    const size = center * 2;
+    const total = categorySpending.reduce((sum, cat) => sum + cat.amount, 0);
+    
+    let currentAngle = 0;
+
+    return (
+      <View style={styles.pieContainer}>
+        <Svg height={size} width={size} viewBox={`0 0 ${size} ${size}`}>
+          {categorySpending.map((cat, i) => {
+            const percentage = cat.percentage / 100;
+            if (percentage <= 0) return null;
+            
+            // Handle 100% case
+            if (percentage > 0.999) {
+              return (
+                <Circle
+                  key={cat.category}
+                  cx={center}
+                  cy={center}
+                  r={radius}
+                  fill="none"
+                  stroke={CATEGORY_COLORS[i % CATEGORY_COLORS.length]}
+                  strokeWidth={strokeWidth}
+                />
+              );
+            }
+
+            const angle = percentage * 360;
+            const startAngle = currentAngle;
+            const endAngle = currentAngle + angle;
+            currentAngle += angle;
+
+            const x1 = center + radius * Math.cos((Math.PI * (startAngle - 90)) / 180);
+            const y1 = center + radius * Math.sin((Math.PI * (startAngle - 90)) / 180);
+            const x2 = center + radius * Math.cos((Math.PI * (endAngle - 90)) / 180);
+            const y2 = center + radius * Math.sin((Math.PI * (endAngle - 90)) / 180);
+
+            const largeArcFlag = angle > 180 ? 1 : 0;
+            const d = `M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`;
+
+            return (
+              <Path
+                key={cat.category}
+                d={d}
+                fill="none"
+                stroke={CATEGORY_COLORS[i % CATEGORY_COLORS.length]}
+                strokeWidth={strokeWidth}
+                strokeLinecap="round"
+              />
+            );
+          })}
+        </Svg>
+        <View style={styles.pieCenterLabel}>
+          <Text style={[styles.pieTotalLabel, { color: colors.textMuted }]}>Total</Text>
+          <Text style={[styles.pieTotalValue, { color: colors.text }]}>{formatCurrency(totalMonthlySpending)}</Text>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={colors.statusBar} />
@@ -297,6 +363,7 @@ function Analytics() {
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Category Distribution</Text>
             </View>
             <View style={[styles.categoriesBox, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              {renderPieChart()}
               {categorySpending.map((cat, i) => (
                 <View key={cat.category} style={[styles.catItem, { borderBottomColor: colors.cardBorder }]}>
                   <View style={[styles.catColor, { backgroundColor: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }]} />
@@ -388,6 +455,10 @@ const styles = StyleSheet.create({
   catName: { flex: 1, fontSize: 14, fontWeight: '700' },
   catPercent: { fontSize: 12, fontWeight: '600', marginRight: 12 },
   catAmount: { fontSize: 14, fontWeight: '800' },
+  pieContainer: { alignItems: 'center', justifyContent: 'center', marginVertical: 24, position: 'relative' },
+  pieCenterLabel: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  pieTotalLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  pieTotalValue: { fontSize: 18, fontWeight: '800', marginTop: 2 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalCard: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24, borderTopWidth: 1 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
