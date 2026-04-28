@@ -60,7 +60,11 @@ const PinEntryScreen = ({ navigation }: Props) => {
           if (isValid) {
             navigation.replace('MainTabs');
           } else {
-            Vibration.vibrate(400);
+            try {
+              Vibration.vibrate(400);
+            } catch (err) {
+              console.warn('Vibration failed', err);
+            }
             Alert.alert('Incorrect PIN', 'Please try again.');
             setPin('');
           }
