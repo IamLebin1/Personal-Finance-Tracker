@@ -11,8 +11,10 @@ import {
   StatusBar,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { launchImageLibrary } from 'react-native-image-picker';
 import { config } from '../config/appConfig';
 import { getAuthSession, setAuthSession } from '../services/authSession';
 
@@ -23,6 +25,7 @@ export default function ProfileDetails() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
 
   const loadProfile = useCallback(async () => {
     const session = getAuthSession();
@@ -104,6 +107,27 @@ export default function ProfileDetails() {
     }
   };
 
+  const handlePickProfileImage = async () => {
+    try {
+      const result = await launchImageLibrary({
+        mediaType: 'photo',
+        quality: 0.8,
+      });
+
+      if (result.didCancel) return;
+      if (result.errorCode) {
+        throw new Error(result.errorMessage || 'Failed to select image');
+      }
+
+      const selectedImage = result.assets?.[0];
+      if (selectedImage?.uri) {
+        setProfileImageUri(selectedImage.uri);
+      }
+    } catch (error: any) {
+      Alert.alert('Image Error', error?.message || 'Could not select profile image.');
+    }
+  };
+
   if (isLoading) {
     return (
       <View style={styles.loadingBox}>
@@ -120,6 +144,22 @@ export default function ProfileDetails() {
       <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.formCard}>
+          <Text style={styles.label}>PROFILE PICTURE</Text>
+          <View style={styles.profileImageRow}>
+            <View style={styles.profileImageWrap}>
+              {profileImageUri ? (
+                <Image source={{ uri: profileImageUri }} style={styles.profileImage} />
+              ) : (
+                <Text style={styles.profileImagePlaceholder}>
+                  {username.trim().charAt(0).toUpperCase() || 'U'}
+                </Text>
+              )}
+            </View>
+            <TouchableOpacity style={styles.uploadButton} onPress={handlePickProfileImage}>
+              <Text style={styles.uploadButtonText}>Upload Photo</Text>
+            </TouchableOpacity>
+          </View>
+
           <Text style={styles.label}>USERNAME</Text>
           <TextInput
             style={styles.input}
@@ -197,6 +237,46 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 8,
     marginTop: 16,
+  },
+  profileImageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  profileImageWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#0a0c1f',
+    borderWidth: 1,
+    borderColor: '#232859',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  profileImage: {
+    width: '100%',
+    height: '100%',
+  },
+  profileImagePlaceholder: {
+    color: '#f4f6ff',
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  uploadButton: {
+    marginLeft: 14,
+    backgroundColor: '#232859',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#3a4188',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  uploadButtonText: {
+    color: '#d7dcff',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   input: {
     backgroundColor: '#0a0c1f',
