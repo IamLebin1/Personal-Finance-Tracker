@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { 
   ScrollView, 
   StyleSheet, 
@@ -42,7 +42,9 @@ export default function Analytics() {
   const [daySpending, setDaySpending] = useState<DaySpending[]>([]);
   const [spendingTrend, setSpendingTrend] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isMonthLoading, setIsMonthLoading] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const hasLoadedRef = useRef(false);
 
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
@@ -54,6 +56,12 @@ export default function Analytics() {
   const loadData = useCallback(() => {
     let isMounted = true;
     const task = InteractionManager.runAfterInteractions(async () => {
+      const isInitialLoad = !hasLoadedRef.current;
+
+      if (!isInitialLoad && isMounted) {
+        setIsMonthLoading(true);
+      }
+
       try {
         const userId = getAuthSession()?.userId || '';
         if (!userId) return;
@@ -85,11 +93,16 @@ export default function Analytics() {
       } catch (error) {
         console.error('Failed to load analytics:', error);
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isMounted) {
+          if (isInitialLoad) {
+            hasLoadedRef.current = true;
+            setIsLoading(false);
+          }
+          setIsMonthLoading(false);
+        }
       }
     });
 
-    setIsLoading(true);
     return () => {
       isMounted = false;
       task.cancel();
@@ -116,20 +129,31 @@ export default function Analytics() {
   };
 
   const totalMonthlySpending = categorySpending.reduce((sum, cat) => sum + cat.amount, 0);
-  
-  const renderCalendarDays = () => {
+  const monthTitle = useMemo(
+    () => currentMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+    [currentMonth],
+  );
+
+  const calendarCells = useMemo(() => {
     const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
     const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
     const dayMap = new Map(daySpending.map(d => [d.day, d]));
-    const days = [];
-    
-    for (let i = 0; i < firstDay; i++) {
-      days.push(<View key={`empty-${i}`} style={styles.calendarDay} />);
-    }
-    
-    for (let day = 1; day <= daysInMonth; day++) {
+    const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+    const cells = [];
+
+    for (let cellIndex = 0; cellIndex < totalCells; cellIndex++) {
+      const day = cellIndex - firstDay + 1;
+
+      if (day < 1 || day > daysInMonth) {
+        cells.push(
+          <View key={`empty-${cellIndex}`} style={[styles.calendarDay, styles.calendarDayEmpty]} />,
+        );
+        continue;
+      }
+
       const stats = dayMap.get(day);
       const net = stats ? stats.income - stats.expense : 0;
+      const netInDisplayCurrency = code === 'MYR' ? net * usdToMyrRate : net;
       const hasActivity = !!stats && (stats.income > 0 || stats.expense > 0);
       
       days.push(
@@ -140,10 +164,19 @@ export default function Analytics() {
               {net >= 0 ? `+${Math.round(net)}` : `-${Math.round(Math.abs(net))}`}
             </Text>
           )}
-        </View>
+        </View>,
       );
     }
-    return days;
+
+    return cells;
+  }, [currentMonth, daySpending, code, usdToMyrRate]);
+
+  const goToPreviousMonth = () => {
+    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const goToNextMonth = () => {
+    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
   const renderCurveGraph = () => {
@@ -257,7 +290,12 @@ export default function Analytics() {
               <View style={styles.weekdays}>
                 {['S','M','T','W','T','F','S'].map((d, i) => <Text key={i} style={[styles.weekday, { color: colors.textMuted }]}>{d}</Text>)}
               </View>
-              <View style={styles.calendarGrid}>{renderCalendarDays()}</View>
+              <View style={styles.calendarGrid}>{calendarCells}</View>
+              {isMonthLoading ? (
+                <View style={styles.calendarLoadingOverlay}>
+                  <ActivityIndicator color="#8a6eff" size="small" />
+                </View>
+              ) : null}
             </View>
 
             <View style={styles.sectionHeader}>

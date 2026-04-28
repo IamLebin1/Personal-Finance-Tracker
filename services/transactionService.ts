@@ -1,5 +1,6 @@
 import type { Transaction } from '../types/transaction';
 import { getTransactionsByUser } from './transactionApi';
+import { formatCurrencyFromUsd } from './currencyService';
 
 export interface DashboardSummary {
   totalBalance: number;
@@ -134,8 +135,7 @@ export async function getMonthlySpendingTrendPercent(walletId?: string, monthDat
 }
 
 export function formatCurrency(amount: number, showSign: boolean = false): string {
-  const sign = amount < 0 ? '-' : (showSign && amount > 0 ? '+' : '');
-  return `${sign}$${Math.abs(amount).toFixed(2)}`;
+  return formatCurrencyFromUsd(amount, { showSign });
 }
 
 export function formatTrendPercent(value: number): string {

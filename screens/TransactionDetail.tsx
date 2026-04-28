@@ -22,8 +22,9 @@ const categoryOptions = [
 export default function TransactionDetail({ route, navigation }: Props) {
   const { colors, isDark } = useTheme();
   const { transaction } = route.params;
+  const { symbol, convertFromUsd, convertToUsd } = useCurrency();
 
-  const [amount, setAmount] = useState(String(transaction.amount));
+  const [amount, setAmount] = useState(() => convertFromUsd(transaction.amount).toFixed(2));
   const [note, setNote] = useState(transaction.note ?? '');
   const [category, setCategory] = useState(transaction.category);
   const [type, setType] = useState<'income' | 'expense' | 'transfer'>(transaction.type);
@@ -37,10 +38,12 @@ export default function TransactionDetail({ route, navigation }: Props) {
       return;
     }
 
+    const amountInUsd = convertToUsd(parsedAmount);
+
     setIsSaving(true);
     try {
       await updateTransaction(transaction.id, {
-        amount: parsedAmount,
+        amount: amountInUsd,
         note: note.trim(),
         category,
         type: type as any,

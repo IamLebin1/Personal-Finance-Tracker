@@ -39,6 +39,15 @@ function AppContent() {
 }
 
 function App() {
+  useEffect(() => {
+    void loadCurrencyPreference();
+    void startCurrencyRateFeed();
+
+    return () => {
+      stopCurrencyRateFeed();
+    };
+  }, []);
+
   return (
     <SafeAreaProvider>
       <ThemeProvider>
