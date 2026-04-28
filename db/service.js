@@ -77,6 +77,9 @@ function ensureTransactionColumns(db, onDone) {
     if (!existingColumns.has('userId')) {
       alterStatements.push("ALTER TABLE transactions ADD COLUMN userId INTEGER NOT NULL DEFAULT 1");
     }
+    if (!existingColumns.has('walletId')) {
+      alterStatements.push("ALTER TABLE transactions ADD COLUMN walletId INTEGER REFERENCES wallets(id) ON DELETE SET NULL");
+    }
 
     if (alterStatements.length === 0) {
       if (typeof onDone === 'function') {
@@ -89,7 +92,7 @@ function ensureTransactionColumns(db, onDone) {
     alterStatements.forEach(sql => {
       db.run(sql, alterErr => {
         if (alterErr) {
-          console.error(alterErr.message);
+          console.error(`Error altering table: ${sql}`, alterErr.message);
         }
 
         pending -= 1;
@@ -100,6 +103,7 @@ function ensureTransactionColumns(db, onDone) {
     });
   });
 }
+
 
 function getBearerToken(req) {
   const authHeader = req.headers.authorization || '';
@@ -157,6 +161,7 @@ function ensureTables(onDone) {
         password TEXT NOT NULL,
         email TEXT,
         phone TEXT,
+        profilePic TEXT,
         createdAt TEXT NOT NULL
       )
     `);
@@ -179,12 +184,39 @@ function ensureTables(onDone) {
       )
     `);
 
+    // Wallets table
+    db.run(`
+      CREATE TABLE IF NOT EXISTS wallets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        color TEXT,
+        icon TEXT,
+        createdAt TEXT NOT NULL,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Budgets table
+    db.run(`
+      CREATE TABLE IF NOT EXISTS budgets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
+        category TEXT NOT NULL,
+        month TEXT NOT NULL,
+        amount REAL NOT NULL,
+        createdAt TEXT NOT NULL,
+        UNIQUE(userId, category, month),
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
     // Transaction table
     db.run(`
       CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         userId INTEGER NOT NULL,
-        accountId INTEGER,
+        walletId INTEGER,
         amount REAL NOT NULL,
         type TEXT NOT NULL CHECK(type IN ('income', 'expense', 'transfer')),
         category TEXT NOT NULL,
@@ -192,7 +224,8 @@ function ensureTables(onDone) {
         date TEXT NOT NULL,
         createdAt TEXT NOT NULL,
         receiptUrl TEXT,
-        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (walletId) REFERENCES wallets(id) ON DELETE SET NULL
       )
     `);
 
@@ -202,29 +235,66 @@ function ensureTables(onDone) {
     `);
 
     ensureTransactionColumns(db, () => {
-      // Seed demo auth user
-      db.get('SELECT COUNT(*) AS total FROM users', [], (err, row) => {
-        if (!err && row && row.total === 0) {
-          db.run(
-            'INSERT INTO users(username, password, email, phone, createdAt) VALUES (?, ?, ?, ?, ?)',
-            ['demo-user', hashPassword('demo123'), 'demo@example.com', '+1234567890', new Date().toISOString()]
-          );
-        } else if (!err && row && row.total > 0) {
-          db.run(
-            'UPDATE users SET email = ?, phone = ? WHERE username = ? AND (email IS NULL OR phone IS NULL)',
-            ['demo@example.com', '+1234567890', 'demo-user']
-          );
-        }
-
-        if (err) {
-          console.error(err.message);
-        }
-
-        closeDb(db);
-        if (typeof onDone === 'function') {
-          onDone();
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_transactions_wallet
+        ON transactions(walletId)
+      `);
+      // Seed default wallet for each user if not exists
+      db.all('SELECT id FROM users', [], (userErr, userRows) => {
+        if (!userErr && userRows && userRows.length > 0) {
+          let userPending = userRows.length;
+          userRows.forEach(user => {
+            db.get('SELECT id FROM wallets WHERE userId = ? LIMIT 1', [user.id], (walletErr, walletRow) => {
+              if (!walletErr && !walletRow) {
+                db.run(
+                  'INSERT INTO wallets(userId, name, color, icon, createdAt) VALUES (?, ?, ?, ?, ?)',
+                  [user.id, 'Main Wallet', '#6e57ff', '👛', new Date().toISOString()],
+                  function(insertErr) {
+                    if (!insertErr) {
+                      const defaultWalletId = this.lastID;
+                      // Update existing transactions for this user that have NULL walletId
+                      db.run('UPDATE transactions SET walletId = ? WHERE userId = ? AND walletId IS NULL', [defaultWalletId, user.id]);
+                    }
+                    userPending -= 1;
+                    if (userPending === 0) finish();
+                  }
+                );
+              } else {
+                userPending -= 1;
+                if (userPending === 0) finish();
+              }
+            });
+          });
+        } else {
+          finish();
         }
       });
+
+      function finish() {
+        // Seed demo auth user
+        db.get('SELECT COUNT(*) AS total FROM users', [], (err, row) => {
+          if (!err && row && row.total === 0) {
+            db.run(
+              'INSERT INTO users(username, password, email, phone, createdAt) VALUES (?, ?, ?, ?, ?)',
+              ['demo-user', hashPassword('demo123'), 'demo@example.com', '+1234567890', new Date().toISOString()]
+            );
+          } else if (!err && row && row.total > 0) {
+            db.run(
+              'UPDATE users SET email = ?, phone = ? WHERE username = ? AND (email IS NULL OR phone IS NULL)',
+              ['demo@example.com', '+1234567890', 'demo-user']
+            );
+          }
+
+          if (err) {
+            console.error(err.message);
+          }
+
+          closeDb(db);
+          if (typeof onDone === 'function') {
+            onDone();
+          }
+        });
+      }
     });
   });
 }
@@ -247,25 +317,30 @@ function seedTransactions(onDone) {
       }
 
       const userId = userRow.id;
-      const stmt = db.prepare(`
-        INSERT INTO transactions(amount, type, category, date, note, receiptUrl, userId, createdAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
+      db.get('SELECT id FROM wallets WHERE userId = ? LIMIT 1', [userId], (wErr, wRow) => {
+        const walletId = wRow ? wRow.id : null;
+        
+        const stmt = db.prepare(`
+          INSERT INTO transactions(amount, type, category, date, note, receiptUrl, userId, createdAt, walletId)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
 
-      const now = new Date().toISOString();
-      stmt.run(4200, 'income', 'salary', '2026-04-04T08:30:00Z', 'Monthly salary', '', userId, now);
-      stmt.run(84.2, 'expense', 'groceries', '2026-04-04T11:45:00Z', 'Weekend grocery run', '', userId, now);
-      stmt.run(14.9, 'expense', 'transport', '2026-04-03T15:15:00Z', 'Grab ride', '', userId, now);
-      stmt.run(120.0, 'expense', 'utilities', '2026-04-02T09:00:00Z', 'Water bill', '', userId, now);
-      stmt.run(250.0, 'income', 'freelance', '2026-04-01T19:00:00Z', 'Side project payment', '', userId, now);
+        const now = new Date().toISOString();
+        stmt.run(4200, 'income', 'salary', '2026-04-04T08:30:00Z', 'Monthly salary', '', userId, now, walletId);
+        stmt.run(84.2, 'expense', 'groceries', '2026-04-04T11:45:00Z', 'Weekend grocery run', '', userId, now, walletId);
+        stmt.run(14.9, 'expense', 'transport', '2026-04-03T15:15:00Z', 'Grab ride', '', userId, now, walletId);
+        stmt.run(120.0, 'expense', 'utilities', '2026-04-02T09:00:00Z', 'Water bill', '', userId, now, walletId);
+        stmt.run(250.0, 'income', 'freelance', '2026-04-01T19:00:00Z', 'Side project payment', '', userId, now, walletId);
 
-      stmt.finalize(() => {
-        closeDb(db);
-        if (typeof onDone === 'function') onDone();
+        stmt.finalize(() => {
+          closeDb(db);
+          if (typeof onDone === 'function') onDone();
+        });
       });
     });
   });
 }
+
 
 function startServer() {
   const PORT = process.env.PORT || 5001;
@@ -348,10 +423,10 @@ app.get('/api/auth/profile', requireAuth, (req, res) => {
 });
 
 app.put('/api/auth/profile', requireAuth, (req, res) => {
-  const { username, email, phone } = req.body;
+  const { username, email, phone, profilePic } = req.body;
   if (!username) return res.status(400).json({ message: 'username is required' });
   const db = openDb();
-  db.run('UPDATE users SET username = ?, email = ?, phone = ? WHERE id = ?', [username.trim(), email, phone, req.auth.userId], function(err) {
+  db.run('UPDATE users SET username = ?, email = ?, phone = ?, profilePic = ? WHERE id = ?', [username.trim(), email, phone, profilePic || null, req.auth.userId], function(err) {
     closeDb(db);
     if (err) {
       if (err.message.includes('UNIQUE')) return res.status(409).json({ message: 'username already exists' });
@@ -378,10 +453,74 @@ app.post('/api/auth/change-password', requireAuth, (req, res) => {
   });
 });
 
+// Wallet Endpoints
+app.get('/api/wallets', requireAuth, (req, res) => {
+  const db = openDb();
+  db.all('SELECT * FROM wallets WHERE userId = ? ORDER BY createdAt ASC', [req.auth.userId], (err, rows) => {
+    closeDb(db);
+    if (err) return res.status(500).json({ message: 'Database error' });
+    res.status(200).json(rows || []);
+  });
+});
+
+app.post('/api/wallets', requireAuth, (req, res) => {
+  const { name, color, icon } = req.body || {};
+  if (!name) return res.status(400).json({ message: 'Wallet name is required' });
+
+  const db = openDb();
+  db.run(
+    'INSERT INTO wallets(userId, name, color, icon, createdAt) VALUES (?, ?, ?, ?, ?)',
+    [req.auth.userId, name, color || '#6e57ff', icon || '👛', new Date().toISOString()],
+    function(err) {
+      closeDb(db);
+      if (err) return res.status(500).json({ message: 'Database error' });
+      res.status(201).json({ id: this.lastID, affected: this.changes });
+    }
+  );
+});
+
+app.put('/api/wallets/:id', requireAuth, (req, res) => {
+  const { name, color, icon } = req.body || {};
+  if (!name) return res.status(400).json({ message: 'Wallet name is required' });
+
+  const db = openDb();
+  db.run(
+    'UPDATE wallets SET name = ?, color = ?, icon = ? WHERE id = ? AND userId = ?',
+    [name, color, icon, req.params.id, req.auth.userId],
+    function(err) {
+      closeDb(db);
+      if (err) return res.status(500).json({ message: 'Database error' });
+      res.status(200).json({ ok: true, affected: this.changes });
+    }
+  );
+});
+
+app.delete('/api/wallets/:id', requireAuth, (req, res) => {
+  const db = openDb();
+  // We should also handle transactions associated with this wallet.
+  // The table is created with ON DELETE SET NULL, so transactions will remain but walletId will be null.
+  db.run('DELETE FROM wallets WHERE id = ? AND userId = ?', [req.params.id, req.auth.userId], function(err) {
+    closeDb(db);
+    if (err) return res.status(500).json({ message: 'Database error' });
+    res.status(200).json({ ok: true, affected: this.changes });
+  });
+});
+
 // Transaction Endpoints
 app.get('/api/transactions', requireAuth, (req, res) => {
+  const { walletId } = req.query;
   const db = openDb();
-  db.all('SELECT * FROM transactions WHERE userId = ? ORDER BY date DESC', [req.auth.userId], (err, rows) => {
+  let sql = 'SELECT * FROM transactions WHERE userId = ?';
+  let params = [req.auth.userId];
+
+  if (walletId) {
+    sql += ' AND walletId = ?';
+    params.push(walletId);
+  }
+
+  sql += ' ORDER BY date DESC';
+
+  db.all(sql, params, (err, rows) => {
     closeDb(db);
     if (err) return res.status(500).json({ message: 'Database error' });
     res.status(200).json(rows || []);
@@ -389,14 +528,14 @@ app.get('/api/transactions', requireAuth, (req, res) => {
 });
 
 app.post('/api/transactions', requireAuth, (req, res) => {
-  const { amount, type, category, date, note, receiptUrl } = req.body || {};
+  const { amount, type, category, date, note, receiptUrl, walletId } = req.body || {};
   if (!amount || !type || !category || !date) return res.status(400).json({ message: 'Missing fields' });
 
   const db = openDb();
   db.run(
-    `INSERT INTO transactions(userId, amount, type, category, note, date, createdAt, receiptUrl)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [req.auth.userId, Number(amount), type, category, note || '', date, new Date().toISOString(), receiptUrl || ''],
+    `INSERT INTO transactions(userId, amount, type, category, note, date, createdAt, receiptUrl, walletId)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [req.auth.userId, Number(amount), type, category, note || '', date, new Date().toISOString(), receiptUrl || '', walletId || null],
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
@@ -406,12 +545,12 @@ app.post('/api/transactions', requireAuth, (req, res) => {
 });
 
 app.put('/api/transactions/:id', requireAuth, (req, res) => {
-  const { amount, type, category, date, note, receiptUrl } = req.body || {};
+  const { amount, type, category, date, note, receiptUrl, walletId } = req.body || {};
   const db = openDb();
   db.run(
-    `UPDATE transactions SET amount = ?, type = ?, category = ?, date = ?, note = ?, receiptUrl = ?
+    `UPDATE transactions SET amount = ?, type = ?, category = ?, date = ?, note = ?, receiptUrl = ?, walletId = ?
      WHERE id = ? AND userId = ?`,
-    [Number(amount), type, category, date, note || '', receiptUrl || '', req.params.id, req.auth.userId],
+    [Number(amount), type, category, date, note || '', receiptUrl || '', walletId || null, req.params.id, req.auth.userId],
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
@@ -457,4 +596,67 @@ app.post('/api/auth/reset-password', (req, res) => {
       });
     });
   });
+});
+
+// Budget Endpoints
+app.get('/api/budgets', requireAuth, (req, res) => {
+  const month = (req.query.month || '').toString();
+  if (!month) return res.status(400).json({ message: 'month query is required, format YYYY-MM' });
+
+  const db = openDb();
+  db.all(
+    'SELECT id, category, month, amount, createdAt FROM budgets WHERE userId = ? AND month = ? ORDER BY category ASC',
+    [req.auth.userId, month],
+    (err, rows) => {
+      closeDb(db);
+      if (err) return res.status(500).json({ message: 'Database error' });
+      res.status(200).json(rows || []);
+    }
+  );
+});
+
+app.post('/api/budgets', requireAuth, (req, res) => {
+  const { category, month, amount } = req.body || {};
+  if (!category || !month || amount === undefined) return res.status(400).json({ message: 'category, month and amount are required' });
+
+  const db = openDb();
+  db.run(
+    `INSERT INTO budgets(userId, category, month, amount, createdAt)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(userId, category, month)
+     DO UPDATE SET amount = excluded.amount`,
+    [req.auth.userId, category.trim(), month, Number(amount), new Date().toISOString()],
+    function(err) {
+      closeDb(db);
+      if (err) return res.status(500).json({ message: 'Database error' });
+      res.status(200).json({ ok: true, affected: this.changes });
+    }
+  );
+});
+
+app.get('/api/analytics/budget-vs-actual', requireAuth, (req, res) => {
+  const month = (req.query.month || '').toString();
+  if (!month) return res.status(400).json({ message: 'month query is required, format YYYY-MM' });
+
+  const db = openDb();
+  db.all(
+    `SELECT b.category,
+            b.amount AS budget,
+            COALESCE(SUM(t.amount), 0) AS actual
+     FROM budgets b
+     LEFT JOIN transactions t
+       ON t.userId = b.userId
+      AND t.type = 'expense'
+      AND t.category = b.category
+      AND substr(t.date, 1, 7) = b.month
+     WHERE b.userId = ? AND b.month = ?
+     GROUP BY b.category, b.amount
+     ORDER BY b.category ASC`,
+    [req.auth.userId, month],
+    (err, rows) => {
+      closeDb(db);
+      if (err) return res.status(500).json({ message: 'Database error' });
+      res.status(200).json(rows || []);
+    }
+  );
 });

@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Animated, Dimensions, Pressable, StyleSheet, Text, View, LayoutChangeEvent } from 'react-native';
 import Svg, { Circle, Path, Polyline } from 'react-native-svg';
+import { useTheme } from '../context/ThemeContext';
 
 const tabMeta: Record<string, { label: string }> = {
   Dashboard: { label: 'Home' },
@@ -62,12 +63,18 @@ function AnimatedTabButton({
   onPress,
   routeName,
   onLayout,
+  activeColor,
+  inactiveColor,
+  indicatorBg,
 }: {
   isFocused: boolean;
   label: string;
   onPress: () => void;
   routeName: string;
   onLayout?: (event: LayoutChangeEvent) => void;
+  activeColor: string;
+  inactiveColor: string;
+  indicatorBg: string;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
   const translateY = useRef(new Animated.Value(0)).current;
@@ -104,9 +111,9 @@ function AnimatedTabButton({
       style={styles.tabButtonShell}
     >
       <Animated.View style={[styles.tabButton, { transform: [{ scale }, { translateY }] }]}>
-        <View style={[styles.activeIndicatorBg, isFocused && styles.activeIndicatorBgVisible]} />
-        <TabIcon routeName={routeName} color={isFocused ? '#a18aff' : '#636781'} />
-        <Text numberOfLines={1} style={[styles.label, isFocused && styles.focusedText]}>
+        <View style={[styles.activeIndicatorBg, isFocused && styles.activeIndicatorBgVisible, { backgroundColor: indicatorBg }]} />
+        <TabIcon routeName={routeName} color={isFocused ? activeColor : inactiveColor} />
+        <Text numberOfLines={1} style={[styles.label, { color: isFocused ? activeColor : inactiveColor }]}>
           {label}
         </Text>
       </Animated.View>
@@ -115,6 +122,7 @@ function AnimatedTabButton({
 }
 
 export default function FinanceTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const { colors, isDark } = useTheme();
   const [tabLayouts, setTabLayouts] = useState<Record<number, { x: number; width: number }>>({});
   const indicatorX = useRef(new Animated.Value(0)).current;
 
@@ -137,11 +145,15 @@ export default function FinanceTabBar({ state, descriptors, navigation }: Bottom
 
   return (
     <View style={styles.outerWrap}>
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
         <Animated.View 
           style={[
             styles.slidingLine, 
-            { transform: [{ translateX: indicatorX }] }
+            { 
+              backgroundColor: colors.primary,
+              shadowColor: colors.primary,
+              transform: [{ translateX: indicatorX }] 
+            }
           ]} 
         />
         
@@ -170,6 +182,9 @@ export default function FinanceTabBar({ state, descriptors, navigation }: Bottom
                 onPress={onPress}
                 routeName={route.name}
                 onLayout={(e) => handleLayout(index, e)}
+                activeColor={colors.accent}
+                inactiveColor={colors.textMuted}
+                indicatorBg={colors.primaryBg}
               />
             </React.Fragment>
           );
@@ -177,20 +192,22 @@ export default function FinanceTabBar({ state, descriptors, navigation }: Bottom
       </View>
 
       <Pressable
-        style={styles.fab}
+        style={[styles.fab, { backgroundColor: colors.card }]}
         onPress={() => {
           const parentNav = navigation.getParent();
           if (parentNav) {
             const { width, height } = Dimensions.get('window');
+            const fabCenterY = height - (Platform.OS === 'ios' ? 76 : 72);
             (parentNav as any).navigate('AddTransaction', {
               fromFab: true,
               originX: width / 2,
-              originY: height - 36,
+              originY: fabCenterY,
+              fast: true, // Hint for snappier animation
             });
           }
         }}
       >
-        <View style={styles.fabInner}>
+        <View style={[styles.fabInner, { backgroundColor: colors.primary, shadowColor: colors.primary }]}>
           <Text style={styles.fabIcon}>+</Text>
         </View>
       </Pressable>
@@ -208,14 +225,12 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     width: '100%',
-    backgroundColor: '#0f111d',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingTop: 8,
     paddingBottom: 28,
     borderTopWidth: 1,
-    borderTopColor: '#222533',
   },
   tabButtonShell: {
     flex: 1,
@@ -233,7 +248,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(138, 110, 255, 0.08)',
     opacity: 0,
   },
   activeIndicatorBgVisible: {
@@ -250,22 +264,16 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   label: {
-    color: '#636781',
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.2,
-  },
-  focusedText: {
-    color: '#a18aff',
   },
   slidingLine: {
     position: 'absolute',
     top: 0,
     height: 3,
     width: 40,
-    backgroundColor: '#8a6eff',
     borderRadius: 3,
-    shadowColor: '#8a6eff',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
     shadowRadius: 8,
@@ -277,7 +285,6 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#0f111d',
     padding: 5,
     justifyContent: 'center',
     alignItems: 'center',
@@ -286,10 +293,8 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 28,
-    backgroundColor: '#7357ff',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#7357ff',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 10,

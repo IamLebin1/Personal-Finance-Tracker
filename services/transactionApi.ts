@@ -14,6 +14,7 @@ function mapTransactionRow(row: any): Transaction {
     note: row.note ?? '',
     receiptUrl: row.receiptUrl ?? '',
     userId: String(row.userId),
+    walletId: row.walletId ? String(row.walletId) : undefined,
   };
 }
 
@@ -41,8 +42,13 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
-export async function getTransactionsByUser(_userId?: string): Promise<Transaction[]> {
-  const response = await fetch(`${config.apiBaseUrl}/api/transactions`, {
+export async function getTransactionsByUser(_userId?: string, walletId?: string): Promise<Transaction[]> {
+  let url = `${config.apiBaseUrl}/api/transactions`;
+  if (walletId) {
+    url += `?walletId=${encodeURIComponent(walletId)}`;
+  }
+
+  const response = await fetch(url, {
     headers: {
       ...getAuthHeaders(),
     },
@@ -66,6 +72,7 @@ export async function insertTransaction(input: CreateTransactionInput): Promise<
       date: input.date,
       note: input.note ?? '',
       receiptUrl: input.receiptUrl ?? '',
+      walletId: input.walletId,
     }),
   });
 
@@ -91,6 +98,7 @@ export async function updateTransaction(
     date: updates.date ?? fallback?.date,
     note: updates.note ?? fallback?.note ?? '',
     receiptUrl: updates.receiptUrl ?? fallback?.receiptUrl ?? '',
+    walletId: updates.walletId ?? fallback?.walletId,
   };
 
   if (!next.type || !next.category || !next.date || next.amount <= 0) {
