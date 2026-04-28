@@ -37,11 +37,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
   if (!response.ok) {
     const message = payload?.message ?? `Request failed (${response.status})`;
-    const err: any = new Error(message);
-    // attach status so callers can react to auth errors (401)
-    err.status = response.status;
-    err.payload = payload;
-    throw err;
+    throw new Error(message);
   }
 
   return payload as T;

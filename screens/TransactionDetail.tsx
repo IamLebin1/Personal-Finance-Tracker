@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View, StatusBar, Image } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View, StatusBar } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { deleteTransaction, updateTransaction } from '../services/transactionApi';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { useTheme } from '../context/ThemeContext';
-import { useCurrency } from '../services/useCurrency';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TransactionDetail'>;
 
@@ -31,7 +30,6 @@ export default function TransactionDetail({ route, navigation }: Props) {
   const [type, setType] = useState<'income' | 'expense' | 'transfer'>(transaction.type);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [receiptUrl] = useState<string | undefined>(transaction.receiptUrl ?? undefined);
 
   const onSave = async () => {
     const parsedAmount = Number(amount);
@@ -135,15 +133,6 @@ export default function TransactionDetail({ route, navigation }: Props) {
           multiline
         />
       </View>
-
-      {receiptUrl ? (
-        <>
-          <Text style={[styles.label, { color: colors.textMuted }]}>Receipt</Text>
-          <View style={[styles.receiptWrap, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-            <Image source={{ uri: receiptUrl }} style={styles.receiptPreview} resizeMode="cover" />
-          </View>
-        </>
-      ) : null}
 
       <Pressable style={[styles.primaryButton, { backgroundColor: colors.primary, borderColor: colors.primary }, isSaving && styles.disabledButton]} onPress={onSave} disabled={isSaving}>
         <Text style={styles.primaryButtonText}>{isSaving ? 'Saving...' : 'Save Changes'}</Text>
@@ -263,16 +252,5 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.65,
-  },
-  receiptWrap: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 10,
-    marginTop: 2,
-  },
-  receiptPreview: {
-    width: '100%',
-    height: 200,
-    borderRadius: 10,
   },
 });
