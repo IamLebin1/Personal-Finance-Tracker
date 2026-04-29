@@ -31,7 +31,6 @@ import { useTheme } from '../context/ThemeContext';
 import { getBudgets } from '../services/budgetApi';
 import { config } from '../config/appConfig';
 import { useNotifications } from '../services/useNotifications';
-import socketService from '../services/socketService';
 
 const { width } = Dimensions.get('window');
 
@@ -91,7 +90,7 @@ function formatCategoryLabel(category: string): string {
 
 function Dashboard({ navigation }: { navigation: any }) {
   const { colors, isDark } = useTheme();
-  const { notifications, isConnected } = useNotifications();
+  const { notifications, isConnected, unreadCount } = useNotifications();
   
   const [totalBalance, setTotalBalance] = useState(0);
   const [incomeTotal, setIncomeTotal] = useState(0);
@@ -240,22 +239,6 @@ function Dashboard({ navigation }: { navigation: any }) {
 
   useFocusEffect(refreshCallback);
 
-  // Send budget checks to WebSocket when budgets are loaded
-  useEffect(() => {
-    if (isConnected && session?.userId) {
-      categories.forEach((cat) => {
-        const spent = cat.amount;
-        // Get budget for this category - using a default budget if not set
-        socketService.checkBudget(
-          session.userId,
-          cat.category,
-          spent,
-          cat.amount * 2 // Assume budget is 2x the typical spending (you can customize this)
-        );
-      });
-    }
-  }, [isConnected, categories, session?.userId]);
-
   const session = getAuthSession();
   const displayName = session?.username?.trim() || 'User';
 
@@ -280,7 +263,11 @@ function Dashboard({ navigation }: { navigation: any }) {
                 <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                 <Path d="M13.73 21a2 2 0 0 1-3.46 0" />
               </Svg>
-              <View style={styles.notificationDot} />
+              {unreadCount > 0 && (
+                <View style={styles.notificationDot}>
+                  <Text style={styles.notificationDotText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              )}
             </Pressable>
             <Pressable 
               onPress={() => navigation.navigate('Profile')}
@@ -513,7 +500,8 @@ const styles = StyleSheet.create({
   userName: { fontSize: 26, fontWeight: '800', marginTop: 2 },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
   iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  notificationDot: { position: 'absolute', top: 12, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: '#ff4d6d', borderWidth: 1.5, borderColor: '#16193b' },
+  notificationDot: { position: 'absolute', top: 10, right: 8, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#ff4d6d', borderWidth: 1.5, borderColor: '#16193b', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  notificationDotText: { color: '#fff', fontSize: 10, fontWeight: '800', lineHeight: 12 },
   profileButton: { width: 44, height: 44, borderRadius: 22, padding: 2 },
   avatarGradient: { flex: 1, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#fff', fontSize: 16, fontWeight: '800' },

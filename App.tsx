@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RootStackNavigator from './navigation/RootStackNavigator';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { loadCurrencyPreference, startCurrencyRateFeed, stopCurrencyRateFeed } from './services/currencyService';
+import { loadAuthSession } from './services/authSession';
 import socketService from './services/socketService';
 
 function AppContent() {
@@ -42,12 +43,13 @@ function AppContent() {
 
 function App() {
   useEffect(() => {
-    void loadCurrencyPreference();
-    void startCurrencyRateFeed();
-
-    // Initialize WebSocket connection
-    void socketService.connect().catch((error) => {
-      console.warn('Failed to connect to WebSocket:', error);
+    void (async () => {
+      await loadAuthSession();
+      await loadCurrencyPreference();
+      await startCurrencyRateFeed();
+      await socketService.connect();
+    })().catch((error) => {
+      console.warn('Failed to start app services:', error);
     });
 
     return () => {

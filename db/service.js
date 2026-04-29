@@ -8,6 +8,7 @@ const { Server } = require('socket.io');
 const path = require('path');
 const app = express();
 const DB = path.join(__dirname, 'finance_tracker.sqlite');
+let financeNamespace = null;
 
 app.use(cors());
 app.use(express.json());
@@ -133,6 +134,54 @@ function addRecurringInterval(dateValue, frequency, intervalCount = 1) {
   }
 
   return nextDate;
+}
+
+function emitBudgetAlertsForUser(userId, dateValue) {
+  if (!financeNamespace) {
+    return;
+  }
+
+  const targetDate = dateValue ? new Date(dateValue) : new Date();
+  if (Number.isNaN(targetDate.getTime())) {
+    return;
+  }
+
+  const monthKey = targetDate.toISOString().slice(0, 7);
+  const db = openDb();
+
+  db.all(
+    `SELECT b.category, b.amount AS budgetAmount,
+            COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS actualAmount
+     FROM budgets b
+     LEFT JOIN transactions t
+       ON t.userId = b.userId
+      AND t.category = b.category
+      AND substr(t.date, 1, 7) = b.month
+     WHERE b.userId = ? AND b.month = ?
+     GROUP BY b.category, b.amount`,
+    [userId, monthKey],
+    (err, rows) => {
+      closeDb(db);
+
+      if (err || !rows || rows.length === 0) {
+        return;
+      }
+
+      rows.forEach(row => {
+        const budgetAmount = Number(row.budgetAmount) || 0;
+        const actualAmount = Number(row.actualAmount) || 0;
+        if (budgetAmount > 0 && actualAmount >= budgetAmount * 0.9) {
+          financeNamespace.to(`user_${userId}`).emit('budget_alert', {
+            category: row.category,
+            spent: Math.round(actualAmount * 100) / 100,
+            limit: Math.round(budgetAmount * 100) / 100,
+            percentUsed: Math.round((actualAmount / budgetAmount) * 100),
+            message: `${row.category} budget is ${Math.round((actualAmount / budgetAmount) * 100)}% used for ${monthKey}`,
+          });
+        }
+      });
+    }
+  );
 }
 
 function ensureRecurringTransactionsColumns(db, onDone) {
@@ -268,6 +317,7 @@ function syncRecurringTransactionsForUser(db, userId, onDone) {
             insertErr => {
               if (!insertErr) {
                 generated += 1;
+                emitBudgetAlertsForUser(userId, dueDate.toISOString());
               } else {
                 console.error('Error creating recurring transaction:', insertErr.message);
               }
@@ -825,6 +875,7 @@ app.post('/api/transactions', requireAuth, (req, res) => {
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
+      emitBudgetAlertsForUser(req.auth.userId, date);
       res.status(201).json({ id: this.lastID, affected: this.changes });
     }
   );
@@ -840,6 +891,7 @@ app.put('/api/transactions/:id', requireAuth, (req, res) => {
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
+      emitBudgetAlertsForUser(req.auth.userId, date);
       res.status(200).json({ ok: true, affected: this.changes });
     }
   );
@@ -947,6 +999,7 @@ app.put('/api/recurring-transactions/:id', requireAuth, (req, res) => {
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
+      emitBudgetAlertsForUser(req.auth.userId, month + '-01');
       res.status(200).json({ ok: true, affected: this.changes });
     }
   );
