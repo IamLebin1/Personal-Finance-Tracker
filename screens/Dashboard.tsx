@@ -283,7 +283,7 @@ function Dashboard({ navigation }: { navigation: any }) {
                   <Text style={[styles.trendText, { color: monthTrend < 0 ? colors.danger : colors.success }]}>{monthTrend >= 0 ? '↗' : '↘'} {formatTrendPercent(monthTrend)}</Text>
                 </View>
               </View>
-              <Text style={[styles.balanceValue, { color: colors.text }]}>{isLoading ? '...' : formatCurrency(totalBalance, true)}</Text>
+              <Text style={[styles.balanceValue, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>{isLoading ? '...' : formatCurrency(totalBalance, true)}</Text>
             </View>
             <View style={[styles.cardDivider, { backgroundColor: colors.cardBorder }]} />
             <View style={styles.statsRow}>
@@ -291,14 +291,14 @@ function Dashboard({ navigation }: { navigation: any }) {
                 <Text style={[styles.statLabelSmall, { color: colors.textMuted }]}>INCOME</Text>
                 <View style={styles.statValueRow}>
                   <View style={[styles.miniIndicator, { backgroundColor: colors.success }]} />
-                  <Text style={[styles.statValueSmall, { color: colors.success }]}>{formatCurrency(incomeTotal)}</Text>
+                  <Text style={[styles.statValueSmall, { color: colors.success }]} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(incomeTotal)}</Text>
                 </View>
               </View>
               <View style={styles.statColumn}>
                 <Text style={[styles.statLabelSmall, { color: colors.textMuted }]}>EXPENSES</Text>
                 <View style={styles.statValueRow}>
                   <View style={[styles.miniIndicator, { backgroundColor: colors.danger }]} />
-                  <Text style={[styles.statValueSmall, { color: colors.danger }]}>{formatCurrency(expenseTotal)}</Text>
+                  <Text style={[styles.statValueSmall, { color: colors.danger }]} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(expenseTotal)}</Text>
                 </View>
               </View>
             </View>
@@ -310,7 +310,7 @@ function Dashboard({ navigation }: { navigation: any }) {
               <View style={styles.budgetHeader}>
                 <View>
                   <Text style={[styles.budgetLabel, { color: colors.textMuted }]}>MONTHLY BUDGET</Text>
-                  <Text style={[styles.budgetValue, { color: colors.text }]}>{formatCurrency(expenseTotal)} / {formatCurrency(totalBudget)}</Text>
+                  <Text style={[styles.budgetValue, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(expenseTotal)} / {formatCurrency(totalBudget)}</Text>
                 </View>
                 <View style={[styles.budgetPercentBadge, { backgroundColor: isNearBudget ? colors.danger + '20' : colors.primaryBg }]}>
                   <Text style={[styles.budgetPercentText, { color: isNearBudget ? colors.danger : colors.primary }]}>{Math.round(budgetProgress)}%</Text>
@@ -339,7 +339,7 @@ function Dashboard({ navigation }: { navigation: any }) {
                   <Text style={[styles.catPercent, { color: colors.textMuted }]}>{Math.round((cat.amount / (expenseTotal || 1)) * 100)}%</Text>
                 </View>
                 <Text style={[styles.catName, { color: colors.textMuted }]}>{formatCategoryLabel(cat.category)}</Text>
-                <Text style={[styles.catAmount, { color: colors.text }]}>{formatCurrency(cat.amount)}</Text>
+                <Text style={[styles.catAmount, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(cat.amount)}</Text>
                 <View style={[styles.progressBg, { backgroundColor: isDark ? '#0a0c1f' : '#f0f2ff' }]}><View style={[styles.progressFill, { width: `${Math.min(100, (cat.amount / (expenseTotal || 1)) * 100)}%`, backgroundColor: colors.primary }]} /></View>
               </View>
             ))}
@@ -364,7 +364,7 @@ function Dashboard({ navigation }: { navigation: any }) {
                       <Text style={[styles.txCategory, { color: colors.text }]}>{catData.label}</Text>
                       <Text style={[styles.txDate, { color: colors.textMuted }]} numberOfLines={1}>{formatTransactionDate(tx.date)} {tx.note ? `• ${tx.note}` : ''}</Text>
                     </View>
-                    <Text style={[styles.txAmount, { color: tx.type === 'income' ? colors.success : colors.text }]}>{tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}</Text>
+                    <Text style={[styles.txAmount, { color: tx.type === 'income' ? colors.success : colors.text }]} numberOfLines={1} adjustsFontSizeToFit>{tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}</Text>
                   </Pressable>
                 );
               })}
@@ -454,20 +454,20 @@ const styles = StyleSheet.create({
   walletSelector: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
   balanceLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase' },
   walletChevron: { fontSize: 10, marginLeft: 6 },
-  balanceValue: { fontSize: 42, fontWeight: '800', letterSpacing: -0.5 },
+  balanceValue: { fontSize: 42, fontWeight: '800', letterSpacing: -0.5, minFontSize: 28 },
   cardDivider: { height: 1, marginVertical: 18 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
   statColumn: { flex: 1 },
   statLabelSmall: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginBottom: 4 },
   statValueRow: { flexDirection: 'row', alignItems: 'center' },
   miniIndicator: { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
-  statValueSmall: { fontSize: 16, fontWeight: '700' },
+  statValueSmall: { fontSize: 16, fontWeight: '700', minFontSize: 10 },
   trendBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
   trendText: { fontSize: 12, fontWeight: '700' },
   budgetCard: { marginTop: 16, padding: 20, borderRadius: 24, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 15, elevation: 5 },
   budgetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   budgetLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
-  budgetValue: { fontSize: 18, fontWeight: '800', marginTop: 4 },
+  budgetValue: { fontSize: 18, fontWeight: '800', marginTop: 4, minFontSize: 12 },
   budgetPercentBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   budgetPercentText: { fontSize: 12, fontWeight: '800' },
   budgetRemaining: { fontSize: 12, fontWeight: '600', marginTop: 12 },
@@ -481,7 +481,7 @@ const styles = StyleSheet.create({
   catEmoji: { fontSize: 16, fontWeight: '800' },
   catPercent: { fontSize: 12, fontWeight: '700' },
   catName: { fontSize: 13, fontWeight: '600' },
-  catAmount: { fontSize: 17, fontWeight: '800', marginTop: 4, marginBottom: 12 },
+  catAmount: { fontSize: 17, fontWeight: '800', marginTop: 4, marginBottom: 12, minFontSize: 10 },
   progressBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3 },
   txList: { borderRadius: 28, padding: 8, borderWidth: 1 },
@@ -492,7 +492,7 @@ const styles = StyleSheet.create({
   txInfo: { flex: 1 },
   txCategory: { fontSize: 16, fontWeight: '700' },
   txDate: { fontSize: 12, marginTop: 3, fontWeight: '500' },
-  txAmount: { fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
+  txAmount: { fontSize: 16, fontWeight: '800', letterSpacing: -0.2, minFontSize: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalContent: { width: '100%' },
   modalCard: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24, borderTopWidth: 1 },

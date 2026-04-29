@@ -25,6 +25,7 @@ import {
   type CategorySpending, 
   type DaySpending 
 } from '../services/transactionService';
+import { convertFromUsd } from '../services/currencyService';
 import { getAuthSession } from '../services/authSession';
 import { getTransactionsByUser } from '../services/transactionApi';
 import { getWallets } from '../services/walletApi';
@@ -157,14 +158,15 @@ function Analytics() {
 
       const stats = dayMap.get(day);
       const net = stats ? stats.income - stats.expense : 0;
+      const convertedNet = convertFromUsd(net, code);
       const hasActivity = !!stats && (stats.income > 0 || stats.expense > 0);
       
       days.push(
         <View key={day} style={[styles.calendarDay, hasActivity && { backgroundColor: net >= 0 ? colors.success + '15' : colors.danger + '15', borderRadius: 8 }]}>
           <Text style={[styles.dayNumber, { color: hasActivity ? colors.text : colors.textMuted }]}>{day}</Text>
           {hasActivity && (
-            <Text style={[styles.dayAmount, { color: net >= 0 ? colors.success : colors.danger }]} numberOfLines={1}>
-              {net >= 0 ? `+${Math.round(net)}` : `-${Math.round(Math.abs(net))}`}
+            <Text style={[styles.dayAmount, { color: net >= 0 ? colors.success : colors.danger }]} numberOfLines={1} adjustsFontSizeToFit>
+              {convertedNet >= 0 ? '+' : ''}{Math.round(convertedNet)}
             </Text>
           )}
         </View>,
@@ -172,7 +174,7 @@ function Analytics() {
     }
 
     return days;
-  }, [currentMonth, daySpending, colors.success, colors.danger, colors.text, colors.textMuted]);
+  }, [currentMonth, daySpending, colors.success, colors.danger, colors.text, colors.textMuted, code]);
 
   const renderCurveGraph = () => {
     if (daySpending.length < 2) return null;
@@ -268,7 +270,7 @@ function Analytics() {
         </Svg>
         <View style={styles.pieCenterLabel}>
           <Text style={[styles.pieTotalLabel, { color: colors.textMuted }]}>Total</Text>
-          <Text style={[styles.pieTotalValue, { color: colors.text }]}>{formatCurrency(totalMonthlySpending)}</Text>
+          <Text style={[styles.pieTotalValue, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(totalMonthlySpending)}</Text>
         </View>
       </View>
     );
@@ -321,7 +323,7 @@ function Analytics() {
                     </Text>
                   </View>
                 </View>
-                <Text style={[styles.cardValue, { color: colors.text }]}>{formatCurrency(totalMonthlySpending)}</Text>
+                <Text style={[styles.cardValue, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(totalMonthlySpending)}</Text>
               </View>
 
               {renderCurveGraph()}
@@ -369,7 +371,7 @@ function Analytics() {
                   <View style={[styles.catColor, { backgroundColor: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }]} />
                   <Text style={[styles.catName, { color: colors.text }]}>{cat.category.charAt(0).toUpperCase() + cat.category.slice(1)}</Text>
                   <Text style={[styles.catPercent, { color: colors.textMuted }]}>{cat.percentage.toFixed(0)}%</Text>
-                  <Text style={[styles.catAmount, { color: colors.text }]}>{formatCurrency(cat.amount)}</Text>
+                  <Text style={[styles.catAmount, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(cat.amount)}</Text>
                 </View>
               ))}
             </View>
@@ -433,7 +435,7 @@ const styles = StyleSheet.create({
   cardLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   trendBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   trendText: { fontSize: 11, fontWeight: '800' },
-  cardValue: { fontSize: 32, fontWeight: '800', marginTop: 8 },
+  cardValue: { fontSize: 32, fontWeight: '800', marginTop: 8, minFontSize: 20 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   sectionTitle: { fontSize: 18, fontWeight: '800' },
   calendarNav: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -447,7 +449,7 @@ const styles = StyleSheet.create({
   calendarGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   calendarDay: { width: '14.28%', height: 44, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   dayNumber: { fontSize: 14, fontWeight: '600' },
-  dayAmount: { fontSize: 8, fontWeight: '800', marginTop: 1 },
+  dayAmount: { fontSize: 8, fontWeight: '800', marginTop: 1, minFontSize: 5 },
   graphOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 60 },
   categoriesBox: { borderRadius: 24, padding: 16, borderWidth: 1 },
   catItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
@@ -458,7 +460,7 @@ const styles = StyleSheet.create({
   pieContainer: { alignItems: 'center', justifyContent: 'center', marginVertical: 24, position: 'relative' },
   pieCenterLabel: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
   pieTotalLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  pieTotalValue: { fontSize: 18, fontWeight: '800', marginTop: 2 },
+  pieTotalValue: { fontSize: 18, fontWeight: '800', marginTop: 2, minFontSize: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalCard: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24, borderTopWidth: 1 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },

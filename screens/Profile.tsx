@@ -274,11 +274,11 @@ function Profile() {
           </View>
           <View style={[styles.statBox, styles.statDivider, { borderColor: colors.cardBorder }]}>
             <Text style={[styles.statLabel, { color: colors.textMuted }]}>Income</Text>
-            <Text style={[styles.statValue, { color: colors.success }]}>{isLoading ? '...' : formatCurrency(stats.totalIncome)}</Text>
+            <Text style={[styles.statValue, { color: colors.success }]} numberOfLines={1} adjustsFontSizeToFit>{isLoading ? '...' : formatCurrency(stats.totalIncome)}</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={[styles.statLabel, { color: colors.textMuted }]}>Expenses</Text>
-            <Text style={[styles.statValue, { color: colors.danger }]}>{isLoading ? '...' : formatCurrency(stats.totalExpense)}</Text>
+            <Text style={[styles.statValue, { color: colors.danger }]} numberOfLines={1} adjustsFontSizeToFit>{isLoading ? '...' : formatCurrency(stats.totalExpense)}</Text>
           </View>
         </View>
 
@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
   statBox: { flex: 1, alignItems: 'center' },
   statDivider: { borderLeftWidth: 1, borderRightWidth: 1 },
   statLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 6 },
-  statValue: { fontSize: 15, fontWeight: '800' },
+  statValue: { fontSize: 15, fontWeight: '800', minFontSize: 10 },
   sectionTitle: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 12, marginLeft: 4 },
   sectionCard: { borderRadius: 24, borderWidth: 1, marginBottom: 24, paddingHorizontal: 4 },
   rowItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1 },
