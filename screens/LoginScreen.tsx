@@ -17,7 +17,8 @@ import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { config } from '../config/appConfig';
 import { setAuthSession } from '../services/authSession';
 import { DarkPalette } from '../constants/theme';
-import * as pinService from '../services/pinService';
+import { hasCompletedOnboarding, setOnboardingCompleted } from '../services/onboardingService';
+import { getWallets } from '../services/walletApi';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
@@ -131,13 +132,20 @@ const LoginScreen = ({ navigation, route }: Props) => {
           setUsername('');
         }
         
-        // Check for PIN access using the specific userId from response
-        const pinEnabled = await pinService.isPinEnabled(userId);
-        if (pinEnabled) {
-          navigation.replace('PinEntry');
-        } else {
-          navigation.replace('MainTabs');
+        let setupCompleted = await hasCompletedOnboarding(userId);
+        if (!setupCompleted) {
+          try {
+            const wallets = await getWallets();
+            if (wallets.length > 0) {
+              setupCompleted = true;
+              await setOnboardingCompleted(userId, true);
+            }
+          } catch {
+            // Ignore wallet lookup errors here and continue to onboarding.
+          }
         }
+
+        navigation.replace(setupCompleted ? 'MainTabs' : 'OnboardingSetup');
       })
       .catch(() => {
         Alert.alert('Login failed', 'Invalid username or password.');
@@ -162,7 +170,7 @@ const LoginScreen = ({ navigation, route }: Props) => {
           <View style={styles.header}>
             <View style={styles.logoContainer}>
               <View style={styles.logoIcon}>
-                <Text style={styles.logoText}>$</Text>
+                <Text style={styles.logoText}>👛</Text>
               </View>
               <Text style={styles.brandTitle}>Finance</Text>
             </View>

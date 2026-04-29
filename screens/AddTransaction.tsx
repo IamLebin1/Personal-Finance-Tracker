@@ -24,6 +24,7 @@ import { getSelectedWalletId } from '../services/walletService';
 import type { TransactionType, Wallet } from '../types/transaction';
 import { CATEGORIES } from '../constants/categories';
 import { useTheme } from '../context/ThemeContext';
+import { useCurrency } from '../services/useCurrency';
 
 async function uploadReceiptToCloud(fileUri: string): Promise<string> {
   return Promise.resolve(fileUri);
@@ -110,6 +111,7 @@ const windowSize = Dimensions.get('window');
 
 export default function AddTransaction({ navigation, route }: Props) {
   const { colors, isDark } = useTheme();
+  const { symbol, convertToUsd } = useCurrency();
   
   // 1. Hooks
   const [amount, setAmount] = useState('');
@@ -288,8 +290,9 @@ export default function AddTransaction({ navigation, route }: Props) {
       const saveDate = new Date(selectedDate);
       const now = new Date();
       saveDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), 0);
+      const amountInUsd = convertToUsd(parsedAmount);
       await insertTransaction({
-        amount: parsedAmount,
+        amount: amountInUsd,
         type: transactionType,
         category: selectedCategory,
         date: saveDate.toISOString(),
@@ -353,7 +356,7 @@ export default function AddTransaction({ navigation, route }: Props) {
 
         <ScrollView style={styles.contentScroll} contentContainerStyle={styles.contentScrollContainer} showsVerticalScrollIndicator={false}>
           <Pressable style={[styles.amountWrap, { backgroundColor: colors.card, borderColor: colors.cardBorder }]} onPress={openCalculator}>
-            <Text style={[styles.currency, { color: colors.primary }]}>$</Text>
+            <Text style={[styles.currency, { color: colors.primary }]}>{symbol}</Text>
             <Text style={[styles.amountText, { color: colors.text }]}>{displayAmount}</Text>
           </Pressable>
 
@@ -420,7 +423,7 @@ export default function AddTransaction({ navigation, route }: Props) {
           <Animated.View style={[styles.calculatorCard, { transform: [{ translateY: calcTranslateY }], backgroundColor: colors.card, borderTopColor: colors.cardBorder }]} {...panResponder.panHandlers}>
             <View style={[styles.calculatorHandle, { backgroundColor: colors.textMuted + '40' }]} />
             <View style={styles.calculatorAmountDisplay}>
-              <Text style={[styles.calculatorCurrency, { color: colors.primary }]}>$</Text>
+              <Text style={[styles.calculatorCurrency, { color: colors.primary }]}>{symbol}</Text>
               <View style={styles.calculatorAmountColumn}>
                 {calculatorExpression ? <Text style={[styles.calculatorExpressionText, { color: colors.textMuted }]}>{calculatorExpression}</Text> : null}
                 <Text style={[styles.calculatorAmountText, { color: colors.text }]}>{displayAmount}</Text>

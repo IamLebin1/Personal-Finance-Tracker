@@ -135,7 +135,7 @@ const RegisterScreen = ({ navigation }: Props) => {
         <View style={styles.topBar}>
           <View style={styles.brandWrap}>
             <View style={styles.logoSquare}>
-              <Text style={styles.logoText}>$</Text>
+              <Text style={styles.logoText}>👛</Text>
             </View>
             <Text style={styles.brandText}>MIDNIGHT GLASS</Text>
           </View>

@@ -105,7 +105,7 @@ const PinEntryScreen = ({ navigation }: Props) => {
       
       <View style={styles.header}>
         <View style={styles.logoBadge}>
-          <Text style={styles.logoIcon}>$</Text>
+          <Text style={styles.logoIcon}>👛</Text>
         </View>
         <Text style={styles.title}>Secure Access</Text>
         <Text style={styles.subtitle}>Enter your security PIN to unlock</Text>

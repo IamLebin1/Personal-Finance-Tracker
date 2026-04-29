@@ -85,7 +85,7 @@ export default function TransactionDetail({ route, navigation }: Props) {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <Text style={[styles.label, { color: colors.textMuted }]}>Amount</Text>
       <View style={[styles.amountWrap, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-        <Text style={[styles.currency, { color: colors.primary }]}>$</Text>
+        <Text style={[styles.currency, { color: colors.primary }]}>{symbol}</Text>
         <TextInput
           value={amount}
           onChangeText={setAmount}

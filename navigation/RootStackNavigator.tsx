@@ -12,15 +12,16 @@ import ProfileDetails from '../screens/ProfileDetails';
 import SecuritySettings from '../screens/SecuritySettings';
 import Notifications from '../screens/Notifications';
 import BudgetScreen from '../screens/BudgetScreen';
+import OnboardingSetup from '../screens/OnboardingSetup';
 import type { Transaction } from '../types/transaction';
 import { loadAuthSession } from '../services/authSession';
-import * as pinService from '../services/pinService';
+import { hasCompletedOnboarding, setOnboardingCompleted } from '../services/onboardingService';
+import { getWallets } from '../services/walletApi';
 
 export type RootStackParamList = {
   Login: { prefillEmail?: string; registeredName?: string } | undefined;
   Register: undefined;
   ForgotPassword: { prefillUsername?: string } | undefined;
-  PinEntry: undefined;
   MainTabs: undefined;
   AddTransaction: { fromFab?: boolean; originX?: number; originY?: number } | undefined;
   TransactionDetail: { transaction: Transaction };
@@ -28,6 +29,7 @@ export type RootStackParamList = {
   SecuritySettings: undefined;
   Notifications: undefined;
   Budget: undefined;
+  OnboardingSetup: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -43,12 +45,21 @@ export default function RootStackNavigator() {
         const isAuthenticated = !!(session && session.token);
         
         if (isAuthenticated && session?.userId) {
-          const pinEnabled = await pinService.isPinEnabled(session.userId);
-          if (pinEnabled) {
-            setInitialRoute('PinEntry');
-          } else {
-            setInitialRoute('MainTabs');
+          let setupCompleted = await hasCompletedOnboarding(session.userId);
+
+          if (!setupCompleted) {
+            try {
+              const wallets = await getWallets();
+              if (wallets.length > 0) {
+                setupCompleted = true;
+                await setOnboardingCompleted(session.userId, true);
+              }
+            } catch {
+              // Keep setupCompleted as false if wallets cannot be loaded.
+            }
           }
+
+          setInitialRoute(setupCompleted ? 'MainTabs' : 'OnboardingSetup');
         } else {
           setInitialRoute('Login');
         }
@@ -83,11 +94,6 @@ export default function RootStackNavigator() {
         <Stack.Screen
           name="ForgotPassword"
           component={ForgotPasswordScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="PinEntry"
-          component={PinEntryScreen}
           options={{ headerShown: false }}
         />
         <Stack.Screen
@@ -129,6 +135,11 @@ export default function RootStackNavigator() {
           name="Budget"
           component={BudgetScreen}
           options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="OnboardingSetup"
+          component={OnboardingSetup}
+          options={{ headerShown: false, gestureEnabled: false }}
         />
       </Stack.Navigator>
     )

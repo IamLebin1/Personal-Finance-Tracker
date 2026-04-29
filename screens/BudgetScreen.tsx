@@ -17,9 +17,11 @@ import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { setBudget, getBudgets } from '../services/budgetApi';
 import { CATEGORIES } from '../constants/categories';
+import { useCurrency } from '../services/useCurrency';
 
 export default function BudgetScreen() {
   const { colors, isDark } = useTheme();
+  const { symbol, convertFromUsd, convertToUsd } = useCurrency();
   const navigation = useNavigation();
   const [isLoading, setIsLoading] = useState(true);
   const [month, setMonth] = useState(() => {
@@ -40,10 +42,12 @@ export default function BudgetScreen() {
       let total = '0';
       
       data.forEach(b => {
+        const converted = convertFromUsd(Number(b.amount));
+        const displayValue = Number.isFinite(converted) ? converted.toFixed(2) : '0.00';
         if (b.category === 'Total') {
-          total = String(b.amount);
+          total = displayValue;
         } else {
-          catMap[b.category] = String(b.amount);
+          catMap[b.category] = displayValue;
         }
       });
       
@@ -55,7 +59,7 @@ export default function BudgetScreen() {
       setIsLoading(false);
       Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
     }
-  }, [month]);
+  }, [month, convertFromUsd]);
 
   useEffect(() => {
     loadBudgets();
@@ -63,7 +67,13 @@ export default function BudgetScreen() {
 
   const handleSaveTotal = async () => {
     try {
-      await setBudget('Total', month, Number(totalBudget));
+      const parsed = Number(totalBudget.replace(/,/g, '').trim());
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        Alert.alert('Invalid amount', 'Please enter a valid budget amount.');
+        return;
+      }
+
+      await setBudget('Total', month, convertToUsd(parsed));
       Alert.alert('Success', 'Total monthly budget updated.');
     } catch (err) {
       Alert.alert('Error', 'Failed to update budget.');
@@ -73,7 +83,13 @@ export default function BudgetScreen() {
   const handleSaveCategory = async (cat: string) => {
     try {
       const val = categoryBudgets[cat] || '0';
-      await setBudget(cat, month, Number(val));
+      const parsed = Number(val.replace(/,/g, '').trim());
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        Alert.alert('Invalid amount', 'Please enter a valid budget amount.');
+        return;
+      }
+
+      await setBudget(cat, month, convertToUsd(parsed));
       Alert.alert('Success', `${cat.charAt(0).toUpperCase() + cat.slice(1)} budget updated.`);
     } catch (err) {
       Alert.alert('Error', 'Failed to update category budget.');
@@ -102,7 +118,7 @@ export default function BudgetScreen() {
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
               <Text style={[styles.cardLabel, { color: colors.textMuted }]}>TOTAL MONTHLY BUDGET</Text>
               <View style={styles.inputRow}>
-                <Text style={[styles.currency, { color: colors.primary }]}>$</Text>
+                <Text style={[styles.currency, { color: colors.primary }]}>{symbol}</Text>
                 <TextInput
                   style={[styles.totalInput, { color: colors.text }]}
                   value={totalBudget}
@@ -127,7 +143,7 @@ export default function BudgetScreen() {
                 <View style={styles.catInfo}>
                   <Text style={[styles.catLabel, { color: colors.text }]}>{cat.label}</Text>
                   <View style={styles.catInputRow}>
-                    <Text style={[styles.catCurrency, { color: colors.textMuted }]}>$</Text>
+                    <Text style={[styles.catCurrency, { color: colors.textMuted }]}>{symbol}</Text>
                     <TextInput
                       style={[styles.catInput, { color: colors.text, borderColor: colors.cardBorder }]}
                       value={categoryBudgets[cat.key] || ''}
