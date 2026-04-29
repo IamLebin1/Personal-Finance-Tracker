@@ -197,6 +197,7 @@ function Profile() {
 
   const generalRows = useMemo(() => [
     { id: 'budget', icon: '📊', title: 'Monthly Budget', subtitle: 'Set your spending limits' },
+    { id: 'recurring', icon: '⏰', title: 'Recurring Bills', subtitle: 'Rent, subscriptions, paychecks' },
     { id: 'notifications', icon: '🔔', title: 'Notifications', subtitle: 'Alerts, Reminders' },
     { id: 'currency', icon: '💵', title: 'Default Currency', subtitle: selectedCurrency === 'MYR' ? 'RM (MYR)' : 'USD ($)' },
   ], [selectedCurrency]);
@@ -210,6 +211,7 @@ function Profile() {
     if (item.id === 'details') navigation.navigate('ProfileDetails' as never);
     else if (item.id === 'security') navigation.navigate('SecuritySettings' as never);
     else if (item.id === 'budget') navigation.navigate('Budget' as never);
+    else if (item.id === 'recurring') navigation.navigate('RecurringTransactions' as never);
     else if (item.id === 'currency') setIsCurrencyModalVisible(true);
     else Alert.alert(item.title, `The ${item.title.toLowerCase()} feature will be available in the next update.`);
   };

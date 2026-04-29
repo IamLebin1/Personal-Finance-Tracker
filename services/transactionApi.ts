@@ -2,6 +2,7 @@ import { config } from '../config/appConfig';
 import type { CreateTransactionInput, Transaction } from '../types/transaction';
 import { getAuthSession } from './authSession';
 import { clearTransactionCache } from './transactionService';
+import { syncRecurringTransactions } from './recurringTransactionApi';
 
 type TransactionUpdate = Partial<Omit<Transaction, 'id' | 'userId'>>;
 
@@ -48,6 +49,13 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 export async function getTransactionsByUser(_userId?: string, walletId?: string): Promise<Transaction[]> {
+  try {
+    await syncRecurringTransactions();
+    clearTransactionCache();
+  } catch (err) {
+    console.error('Failed to sync recurring transactions:', err);
+  }
+
   let url = `${config.apiBaseUrl}/api/transactions`;
   if (walletId) {
     url += `?walletId=${encodeURIComponent(walletId)}`;

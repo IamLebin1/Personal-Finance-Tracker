@@ -12,6 +12,7 @@ import ProfileDetails from '../screens/ProfileDetails';
 import SecuritySettings from '../screens/SecuritySettings';
 import Notifications from '../screens/Notifications';
 import BudgetScreen from '../screens/BudgetScreen';
+import RecurringTransactions from '../screens/RecurringTransactions';
 import type { Transaction } from '../types/transaction';
 import { loadAuthSession } from '../services/authSession';
 import * as pinService from '../services/pinService';
@@ -28,6 +29,7 @@ export type RootStackParamList = {
   SecuritySettings: undefined;
   Notifications: undefined;
   Budget: undefined;
+  RecurringTransactions: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -128,6 +130,11 @@ export default function RootStackNavigator() {
         <Stack.Screen
           name="Budget"
           component={BudgetScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="RecurringTransactions"
+          component={RecurringTransactions}
           options={{ headerShown: false }}
         />
       </Stack.Navigator>
