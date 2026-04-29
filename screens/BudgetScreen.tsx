@@ -18,13 +18,14 @@ import { useTheme } from '../context/ThemeContext';
 import { setBudget, getBudgets } from '../services/budgetApi';
 import { CATEGORIES } from '../constants/categories';
 import { useCurrency } from '../services/useCurrency';
+import { clearAuthSession } from '../services/authSession';
 
 export default function BudgetScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { symbol, convertFromUsd, convertToUsd } = useCurrency();
   const navigation = useNavigation();
   const [isLoading, setIsLoading] = useState(true);
-  const [month, setMonth] = useState(() => {
+  const [month] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
@@ -55,11 +56,19 @@ export default function BudgetScreen() {
       setCategoryBudgets(catMap);
     } catch (err) {
       console.error('Failed to load budgets:', err);
+      const message = err instanceof Error ? err.message : String(err);
+
+      // Backend rejects stale session tokens with a 401.
+      if (message.toLowerCase().includes('invalid or expired token')) {
+        await clearAuthSession();
+        navigation.replace('Login' as never);
+        return;
+      }
     } finally {
       setIsLoading(false);
       Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
     }
-  }, [month, convertFromUsd]);
+  }, [month, convertFromUsd, fadeAnim, navigation]);
 
   useEffect(() => {
     loadBudgets();
@@ -76,6 +85,12 @@ export default function BudgetScreen() {
       await setBudget('Total', month, convertToUsd(parsed));
       Alert.alert('Success', 'Total monthly budget updated.');
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.toLowerCase().includes('invalid or expired token')) {
+        await clearAuthSession();
+        navigation.replace('Login' as never);
+        return;
+      }
       Alert.alert('Error', 'Failed to update budget.');
     }
   };
@@ -92,6 +107,12 @@ export default function BudgetScreen() {
       await setBudget(cat, month, convertToUsd(parsed));
       Alert.alert('Success', `${cat.charAt(0).toUpperCase() + cat.slice(1)} budget updated.`);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.toLowerCase().includes('invalid or expired token')) {
+        await clearAuthSession();
+        navigation.replace('Login' as never);
+        return;
+      }
       Alert.alert('Error', 'Failed to update category budget.');
     }
   };
