@@ -22,6 +22,7 @@ import { clearAuthSession, getAuthSession } from '../services/authSession';
 import { getTransactionsByUser } from '../services/transactionApi';
 import { formatCurrency } from '../services/transactionService';
 import { useTheme } from '../context/ThemeContext';
+import * as currencyService from '../services/currencyService';
 
 const { width } = Dimensions.get('window');
 
@@ -68,8 +69,12 @@ function Profile() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [stats, setStats] = useState({ count: 0, totalIncome: 0, totalExpense: 0 });
   const [isAvatarModalVisible, setIsAvatarModalVisible] = useState(false);
+  const [isCurrencyModalVisible, setIsCurrencyModalVisible] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
   const [photoUrlInput, setPhotoUrlInput] = useState('');
+  const [selectedCurrency, setSelectedCurrency] = useState<'USD' | 'MYR'>('USD');
+  const [exchangeRate, setExchangeRate] = useState(4.7);
+  const [isRateConnected, setIsRateConnected] = useState(false);
   const hasLoadedRef = useRef(false);
   
   const session = getAuthSession();
@@ -114,6 +119,27 @@ function Profile() {
   }, [session?.token]);
 
   useFocusEffect(loadData);
+
+  useEffect(() => {
+    const syncCurrencyState = () => {
+      const currentState = currencyService.getCurrencyState();
+      setSelectedCurrency(currentState.code);
+      setExchangeRate(currentState.usdToMyrRate);
+      setIsRateConnected(currentState.socketConnected);
+    };
+
+    // Keep currency UI in sync with live feed updates.
+    const unsubscribe = currencyService.subscribeCurrency(syncCurrencyState);
+    syncCurrencyState();
+    return unsubscribe;
+  }, []);
+
+  const handleCurrencyChange = async (currency: 'USD' | 'MYR') => {
+    setSelectedCurrency(currency);
+    await currencyService.setPreferredCurrency(currency);
+    setIsCurrencyModalVisible(false);
+    Alert.alert('Success', `Currency changed to ${currency}`);
+  };
 
   const handleUpdateAvatar = async (avatar: string) => {
     setIsAvatarModalVisible(false);
@@ -172,8 +198,8 @@ function Profile() {
   const generalRows = useMemo(() => [
     { id: 'budget', icon: '📊', title: 'Monthly Budget', subtitle: 'Set your spending limits' },
     { id: 'notifications', icon: '🔔', title: 'Notifications', subtitle: 'Alerts, Reminders' },
-    { id: 'currency', icon: '💵', title: 'Default Currency', subtitle: 'USD ($)' },
-  ], []);
+    { id: 'currency', icon: '💵', title: 'Default Currency', subtitle: selectedCurrency === 'MYR' ? 'RM (MYR)' : 'USD ($)' },
+  ], [selectedCurrency]);
 
   const supportRows = useMemo(() => [
     { id: 'help', icon: '🙋', title: 'Help & Support', subtitle: 'FAQ, Contact us' },
@@ -184,6 +210,7 @@ function Profile() {
     if (item.id === 'details') navigation.navigate('ProfileDetails' as never);
     else if (item.id === 'security') navigation.navigate('SecuritySettings' as never);
     else if (item.id === 'budget') navigation.navigate('Budget' as never);
+    else if (item.id === 'currency') setIsCurrencyModalVisible(true);
     else Alert.alert(item.title, `The ${item.title.toLowerCase()} feature will be available in the next update.`);
   };
 
@@ -305,6 +332,56 @@ function Profile() {
           </View>
         </Pressable>
       </Modal>
+
+      {/* Currency Selector Modal */}
+      <Modal visible={isCurrencyModalVisible} transparent animationType="fade" onRequestClose={() => setIsCurrencyModalVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setIsCurrencyModalVisible(false)}>
+          <View style={[styles.currencyModal, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Select Currency</Text>
+            
+            <View style={styles.currencyOptions}>
+              <Pressable 
+                style={[styles.currencyOption, selectedCurrency === 'USD' && [styles.currencyOptionSelected, { backgroundColor: colors.primary + '20', borderColor: colors.primary }], { borderColor: colors.cardBorder }]}
+                onPress={() => handleCurrencyChange('USD')}
+              >
+                <Text style={[styles.currencySymbol, { color: selectedCurrency === 'USD' ? colors.primary : colors.text }]}>$</Text>
+                <Text style={[styles.currencyCode, { color: selectedCurrency === 'USD' ? colors.primary : colors.text }]}>USD</Text>
+                <Text style={[styles.currencyName, { color: colors.textMuted }]}>US Dollar</Text>
+                {selectedCurrency === 'USD' && <Text style={[styles.checkmark, { color: colors.primary }]}>✓</Text>}
+              </Pressable>
+
+              <Pressable 
+                style={[styles.currencyOption, selectedCurrency === 'MYR' && [styles.currencyOptionSelected, { backgroundColor: colors.primary + '20', borderColor: colors.primary }], { borderColor: colors.cardBorder }]}
+                onPress={() => handleCurrencyChange('MYR')}
+              >
+                <Text style={[styles.currencySymbol, { color: selectedCurrency === 'MYR' ? colors.primary : colors.text }]}>RM</Text>
+                <Text style={[styles.currencyCode, { color: selectedCurrency === 'MYR' ? colors.primary : colors.text }]}>MYR</Text>
+                <Text style={[styles.currencyName, { color: colors.textMuted }]}>Malaysian Ringgit</Text>
+                {selectedCurrency === 'MYR' && <Text style={[styles.checkmark, { color: colors.primary }]}>✓</Text>}
+              </Pressable>
+            </View>
+            
+              <View style={[styles.rateInfoContainer, { backgroundColor: colors.background, borderColor: colors.cardBorder }]}>
+                <View style={styles.rateHeader}>
+                  <Text style={[styles.rateLabel, { color: colors.textMuted }]}>Exchange Rate</Text>
+                  <View style={[styles.connectionBadge, { backgroundColor: isRateConnected ? colors.success + '20' : colors.textMuted + '20' }]}>
+                    <Text style={[styles.connectionDot, { color: isRateConnected ? colors.success : colors.textMuted }]}>●</Text>
+                    <Text style={[styles.connectionText, { color: isRateConnected ? colors.success : colors.textMuted }]}>
+                      {isRateConnected ? 'Live' : 'Offline'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={[styles.rateValue, { color: colors.text }]}>
+                  1 USD = <Text style={{ fontWeight: '900', color: colors.primary }}>{exchangeRate.toFixed(4)}</Text> MYR
+                </Text>
+                {/* Reverse rate */}
+                <Text style={[styles.reverseRate, { color: colors.textMuted }]}>
+                  1 MYR = {(1 / exchangeRate).toFixed(4)} USD
+                </Text>
+              </View>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -355,6 +432,22 @@ const styles = StyleSheet.create({
   avatarGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 16 },
   avatarOption: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
   avatarOptionText: { fontSize: 32 },
+  currencyModal: { width: width * 0.85, borderRadius: 32, padding: 24, borderWidth: 1 },
+  currencyOptions: { gap: 16, marginTop: 20 },
+  currencyOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 18, paddingHorizontal: 16, borderRadius: 16, borderWidth: 2, position: 'relative' },
+  currencyOptionSelected: { borderWidth: 2 },
+  currencySymbol: { fontSize: 28, fontWeight: '800', marginRight: 12, minWidth: 40 },
+  currencyCode: { fontSize: 16, fontWeight: '800', marginRight: 8, minWidth: 50 },
+  currencyName: { fontSize: 13, fontWeight: '500', flex: 1 },
+  checkmark: { fontSize: 20, fontWeight: '800', marginLeft: 12 },
+  rateInfoContainer: { marginTop: 24, paddingHorizontal: 16, paddingVertical: 16, borderRadius: 16, borderWidth: 1 },
+  rateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  rateLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
+  connectionBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, gap: 4 },
+  connectionDot: { fontSize: 8, marginTop: -2 },
+  connectionText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
+  rateValue: { fontSize: 18, fontWeight: '600', marginBottom: 6 },
+  reverseRate: { fontSize: 12, fontWeight: '500' },
 });
 
 export default React.memo(Profile);

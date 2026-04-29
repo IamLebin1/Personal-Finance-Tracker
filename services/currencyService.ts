@@ -23,7 +23,7 @@ type AlphaVantageRatePayload = {
 
 const CURRENCY_KEY = '@preferred_currency';
 const DEFAULT_USD_TO_MYR_RATE = 4.7;
-const ALPHA_VANTAGE_API_KEY = '2BGVTDW98K795Z2D';
+const ALPHA_VANTAGE_API_KEY = 'PDPVJNHOMEBYB4B5';
 const ALPHA_VANTAGE_RATE_URL =
   `https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=USD&to_currency=MYR&apikey=${ALPHA_VANTAGE_API_KEY}`;
 const POLL_INTERVAL_MS = 700000;
