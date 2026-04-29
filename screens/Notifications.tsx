@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -7,59 +7,34 @@ import {
   Pressable, 
   Animated, 
   StatusBar,
-  Platform
+  Platform,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
+import { useNotifications, type Notification } from '../services/useNotifications';
 
-interface NotificationItem {
-  id: string;
-  title: string;
-  message: string;
-  time: string;
-  type: 'info' | 'success' | 'alert';
-  isRead: boolean;
+function formatRelativeTime(timestamp: number): string {
+  const diffMs = Date.now() - timestamp;
+  const diffMinutes = Math.max(1, Math.floor(diffMs / 60000));
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours}h ago`;
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
 }
-
-const DUMMY_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: '1',
-    title: 'Budget Alert',
-    message: 'You have reached 80% of your Monthly Food budget.',
-    time: '2h ago',
-    type: 'alert',
-    isRead: false,
-  },
-  {
-    id: '2',
-    title: 'New Feature',
-    message: 'You can now switch between multiple wallets in History and Stats!',
-    time: '5h ago',
-    type: 'info',
-    isRead: false,
-  },
-  {
-    id: '3',
-    title: 'Income Received',
-    message: 'Your Salary for April has been credited to your Main Wallet.',
-    time: '1d ago',
-    type: 'success',
-    isRead: true,
-  },
-  {
-    id: '4',
-    title: 'Security Update',
-    message: 'Your password was successfully changed yesterday.',
-    time: '2d ago',
-    type: 'info',
-    isRead: true,
-  },
-];
 
 export default function Notifications() {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
-  const [notifications, setNotifications] = useState(DUMMY_NOTIFICATIONS);
+  const { notifications, markAllAsRead, markAsRead, clearAllNotifications, dismissNotification } = useNotifications();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
@@ -71,34 +46,44 @@ export default function Notifications() {
     ]).start();
   }, []);
 
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-  };
-
-  const getIcon = (type: NotificationItem['type']) => {
+  const getRealIcon = (type: Notification['type']) => {
     switch (type) {
-      case 'alert': return '⚠️';
-      case 'success': return '💰';
-      default: return '📢';
+      case 'budget_alert': return '⚠️';
+      case 'recurring_synced': return '🔄';
+      default: return '🔔';
     }
   };
 
-  const renderItem = ({ item }: { item: NotificationItem }) => (
+  const renderItem = ({ item }: { item: Notification }) => (
     <View style={[
       styles.notificationItem, 
       { backgroundColor: colors.card, borderColor: colors.cardBorder },
       !item.isRead && { borderLeftWidth: 4, borderLeftColor: colors.primary }
     ]}>
       <View style={[styles.iconBox, { backgroundColor: colors.primaryBg }]}>
-        <Text style={styles.icon}>{getIcon(item.type)}</Text>
+        <Text style={styles.icon}>{getRealIcon(item.type)}</Text>
       </View>
       <View style={styles.contentBox}>
         <View style={styles.itemHeader}>
           <Text style={[styles.itemTitle, { color: colors.text }]}>{item.title}</Text>
-          <Text style={[styles.itemTime, { color: colors.textMuted }]}>{item.time}</Text>
+          <Text style={[styles.itemTime, { color: colors.textMuted }]}>{formatRelativeTime(item.timestamp)}</Text>
         </View>
         <Text style={[styles.itemMessage, { color: colors.textMuted }]}>{item.message}</Text>
       </View>
+      <Pressable
+        onPress={() => {
+          markAsRead(item.id);
+        }}
+        style={styles.itemAction}
+      >
+        <Text style={[styles.itemActionText, { color: colors.primary }]}>{item.isRead ? 'Read' : 'Mark'}</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => dismissNotification(item.id)}
+        style={styles.itemAction}
+      >
+        <Text style={[styles.itemActionText, { color: colors.textMuted }]}>Delete</Text>
+      </Pressable>
     </View>
   );
 
@@ -113,6 +98,17 @@ export default function Notifications() {
         <Text style={[styles.title, { color: colors.text }]}>Notifications</Text>
         <Pressable onPress={markAllAsRead}>
           <Text style={[styles.markRead, { color: colors.primary }]}>Read All</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            if (notifications.length === 0) {
+              Alert.alert('Notifications', 'There are no notifications to clear.');
+              return;
+            }
+            clearAllNotifications();
+          }}
+        >
+          <Text style={[styles.markRead, { color: colors.textMuted }]}>Clear</Text>
         </Pressable>
       </View>
 
@@ -171,6 +167,8 @@ const styles = StyleSheet.create({
   itemTitle: { fontSize: 16, fontWeight: '700' },
   itemTime: { fontSize: 12, fontWeight: '500' },
   itemMessage: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
+  itemAction: { paddingHorizontal: 10, paddingVertical: 8, marginLeft: 8 },
+  itemActionText: { fontSize: 12, fontWeight: '800' },
   emptyContainer: { alignItems: 'center', marginTop: 100 },
   emptyIcon: { fontSize: 60, marginBottom: 16, opacity: 0.3 },
   emptyText: { fontSize: 16, fontWeight: '600' },

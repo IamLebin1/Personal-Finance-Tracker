@@ -30,6 +30,7 @@ import { getCategoryData } from '../constants/categories';
 import { useTheme } from '../context/ThemeContext';
 import { getBudgets } from '../services/budgetApi';
 import { config } from '../config/appConfig';
+import { useNotifications } from '../services/useNotifications';
 
 const { width } = Dimensions.get('window');
 
@@ -89,6 +90,7 @@ function formatCategoryLabel(category: string): string {
 
 function Dashboard({ navigation }: { navigation: any }) {
   const { colors, isDark } = useTheme();
+  const { notifications, isConnected, unreadCount } = useNotifications();
   
   const [totalBalance, setTotalBalance] = useState(0);
   const [incomeTotal, setIncomeTotal] = useState(0);
@@ -261,7 +263,11 @@ function Dashboard({ navigation }: { navigation: any }) {
                 <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                 <Path d="M13.73 21a2 2 0 0 1-3.46 0" />
               </Svg>
-              <View style={styles.notificationDot} />
+              {unreadCount > 0 && (
+                <View style={styles.notificationDot}>
+                  <Text style={styles.notificationDotText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              )}
             </Pressable>
             <Pressable 
               onPress={() => navigation.navigate('Profile')}
@@ -277,6 +283,34 @@ function Dashboard({ navigation }: { navigation: any }) {
             </Pressable>
           </View>
         </Animated.View>
+
+        {/* WebSocket Connection Status and Notifications */}
+        {!isConnected && (
+          <View style={[styles.notificationBar, { backgroundColor: colors.warning }]}>
+            <Text style={styles.notificationText}>📡 Reconnecting...</Text>
+          </View>
+        )}
+
+        {/* Real-time Notification Display */}
+        {notifications.map((notification) => (
+          <View
+            key={notification.id}
+            style={[
+              styles.notificationBanner,
+              {
+                backgroundColor: notification.type === 'budget_alert' ? colors.danger + '20' : colors.success + '20',
+                borderLeftColor: notification.type === 'budget_alert' ? colors.danger : colors.success,
+              },
+            ]}
+          >
+            <Text style={[styles.notificationTitle, { color: colors.text }]}>
+              {notification.type === 'budget_alert' ? '⚠️ ' : '✓ '}{notification.title}
+            </Text>
+            <Text style={[styles.notificationMessage, { color: colors.textMuted }]}>
+              {notification.message}
+            </Text>
+          </View>
+        ))}
 
         <View style={styles.wealthSection}>
           <Animated.View style={[styles.balanceCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }], backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -466,7 +500,8 @@ const styles = StyleSheet.create({
   userName: { fontSize: 26, fontWeight: '800', marginTop: 2 },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
   iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  notificationDot: { position: 'absolute', top: 12, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: '#ff4d6d', borderWidth: 1.5, borderColor: '#16193b' },
+  notificationDot: { position: 'absolute', top: 10, right: 8, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#ff4d6d', borderWidth: 1.5, borderColor: '#16193b', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  notificationDotText: { color: '#fff', fontSize: 10, fontWeight: '800', lineHeight: 12 },
   profileButton: { width: 44, height: 44, borderRadius: 22, padding: 2 },
   avatarGradient: { flex: 1, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#fff', fontSize: 16, fontWeight: '800' },
@@ -548,6 +583,11 @@ const styles = StyleSheet.create({
   modalCancelText: { fontSize: 16, fontWeight: '600' },
   modalSaveBtn: { flex: 2, paddingVertical: 14, alignItems: 'center', borderRadius: 16 },
   modalSaveText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  notificationBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, marginBottom: 12 },
+  notificationText: { fontSize: 14, fontWeight: '600' },
+  notificationBanner: { borderLeftWidth: 4, borderRadius: 12, padding: 14, marginBottom: 12, overflow: 'hidden' },
+  notificationTitle: { fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  notificationMessage: { fontSize: 12, fontWeight: '500' },
 });
 
 export default React.memo(Dashboard);
