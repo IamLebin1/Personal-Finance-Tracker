@@ -16,7 +16,7 @@ import { setPreferredCurrency, type CurrencyCode, convertToUsd, getCurrencyState
 import { createWallet } from '../services/walletApi';
 import { setSelectedWalletId } from '../services/walletService';
 import { insertTransaction } from '../services/transactionApi';
-import { getAuthSession } from '../services/authSession';
+import { getAuthSession, loadAuthSession } from '../services/authSession';
 import { setOnboardingCompleted } from '../services/onboardingService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OnboardingSetup'>;
@@ -38,11 +38,16 @@ export default function OnboardingSetup({ navigation }: Props) {
   const currencyLabel = currency === 'MYR' ? 'MYR' : 'USD';
 
   const handleContinue = async () => {
-    const session = getAuthSession();
+    // Ensure session is loaded from AsyncStorage before proceeding
+    let session = getAuthSession();
+    if (!session) {
+      session = await loadAuthSession();
+    }
+    
     const userId = session?.userId || '';
     const safeWalletName = walletName.trim();
 
-    if (!userId) {
+    if (!userId || !session?.token) {
       Alert.alert('Session expired', 'Please login again.');
       navigation.replace('Login');
       return;
@@ -88,7 +93,15 @@ export default function OnboardingSetup({ navigation }: Props) {
       navigation.replace('MainTabs');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to finish setup right now.';
-      Alert.alert('Setup failed', message);
+      
+      // If token is invalid/expired, redirect to login
+      if (message.includes('Invalid or expired token') || message.includes('Missing auth token')) {
+        Alert.alert('Session expired', 'Your session has expired. Please login again.', [
+          { text: 'OK', onPress: () => navigation.replace('Login') }
+        ]);
+      } else {
+        Alert.alert('Setup failed', message);
+      }
     } finally {
       setSubmitting(false);
     }
