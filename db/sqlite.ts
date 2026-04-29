@@ -1,6 +1,9 @@
 import type { CreateTransactionInput, Transaction } from '../types/transaction';
 import { config } from '../config/appConfig';
 
+// Lightweight declaration for process in RN TypeScript builds
+declare const process: any;
+
 type TransactionListener = (transactions: Transaction[]) => void;
 type TransactionUpdate = Partial<Omit<Transaction, 'id' | 'userId'>>;
 

@@ -1,5 +1,8 @@
 import { Platform } from 'react-native';
 
+// Provide a lightweight declaration for `process` in RN TS builds
+declare const process: any;
+
 const appMode = process.env.APP_MODE ?? 'local';
 
 export const config = {

@@ -19,6 +19,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { getWallets, createWallet, updateWallet, deleteWallet } from '../services/walletApi';
+import { getTransactionsByUser } from '../services/transactionApi';
 import { useTheme } from '../context/ThemeContext';
 import { formatCurrency } from '../services/transactionService';
 import type { Wallet } from '../types/transaction';
@@ -36,6 +37,7 @@ export default function WalletManagement({ navigation }: Props) {
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
   const [walletName, setWalletName] = useState('');
   const [walletAmount, setWalletAmount] = useState('');
+  const [walletBalances, setWalletBalances] = useState<Record<string, number>>({});
   const hasLoadedRef = useRef(false);
 
   const loadWallets = useCallback(() => {
@@ -44,9 +46,28 @@ export default function WalletManagement({ navigation }: Props) {
     const fetchData = async () => {
       try {
         await new Promise(resolve => InteractionManager.runAfterInteractions(() => resolve(null)));
-        const fetchedWallets = await getWallets();
+        const [fetchedWallets, transactions] = await Promise.all([
+          getWallets(),
+          getTransactionsByUser(),
+        ]);
+
+        const nextWalletBalances: Record<string, number> = {};
+        fetchedWallets.forEach(wallet => {
+          nextWalletBalances[String(wallet.id)] = Number(wallet.initialBalance || 0);
+        });
+
+        transactions.forEach(tx => {
+          if (!tx.walletId) return;
+          const key = String(tx.walletId);
+          if (nextWalletBalances[key] === undefined) {
+            nextWalletBalances[key] = 0;
+          }
+          nextWalletBalances[key] += tx.type === 'income' ? tx.amount : -tx.amount;
+        });
+
         if (isMounted) {
           setWallets(fetchedWallets);
+          setWalletBalances(nextWalletBalances);
           hasLoadedRef.current = true;
         }
       } catch (err) {
@@ -106,13 +127,29 @@ export default function WalletManagement({ navigation }: Props) {
       return;
     }
 
+    const amount = walletAmount.trim() ? Number(walletAmount.replace(/,/g, '')) : 0;
+    if (Number.isNaN(amount) || amount < 0) {
+      Alert.alert('Invalid amount', 'Please enter a valid amount.');
+      return;
+    }
+
     try {
-      await updateWallet(selectedWallet.id, { name: walletName.trim() });
+      await updateWallet(selectedWallet.id, { name: walletName.trim(), initialBalance: amount });
+      
+      const oldInitialBalance = selectedWallet.initialBalance || 0;
+      const balanceDifference = amount - oldInitialBalance;
+      
       setWallets(prev =>
         prev.map(w =>
-          w.id === selectedWallet.id ? { ...w, name: walletName.trim() } : w
+          w.id === selectedWallet.id ? { ...w, name: walletName.trim(), initialBalance: amount } : w
         )
       );
+      
+      setWalletBalances(prev => ({
+        ...prev,
+        [String(selectedWallet.id)]: (prev[String(selectedWallet.id)] || 0) + balanceDifference,
+      }));
+      
       setIsEditingWallet(false);
       setSelectedWallet(null);
       setWalletName('');
@@ -160,6 +197,7 @@ export default function WalletManagement({ navigation }: Props) {
   const handleEditPress = (wallet: Wallet) => {
     setSelectedWallet(wallet);
     setWalletName(wallet.name);
+    setWalletAmount(String(wallet.initialBalance || 0));
     setIsEditingWallet(true);
   };
 
@@ -214,7 +252,7 @@ export default function WalletManagement({ navigation }: Props) {
                     <View style={styles.walletInfo}>
                       <Text style={[styles.walletName, { color: colors.text }]}>{wallet.name}</Text>
                       <Text style={[styles.walletBalance, { color: colors.textMuted }]}>
-                        Balance: {formatCurrency(wallet.initialBalance || 0, true)}
+                        Balance: {formatCurrency(walletBalances[String(wallet.id)] || 0, true)}
                       </Text>
                     </View>
                   </View>
@@ -317,17 +355,25 @@ export default function WalletManagement({ navigation }: Props) {
                 />
               </View>
 
-              {selectedWallet?.initialBalance !== undefined && (
-                <View style={styles.infoGroup}>
-                  <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Current Balance</Text>
-                  <Text style={[styles.infoValue, { color: colors.text }]}>
-                    {formatCurrency(selectedWallet.initialBalance, true)}
-                  </Text>
-                  <Text style={[styles.infoHint, { color: colors.textMuted }]}>
-                    Initial balance cannot be edited after creation
-                  </Text>
-                </View>
-              )}
+              <View style={styles.formGroup}>
+                <Text style={[styles.label, { color: colors.textMuted }]}>Balance</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.cardBorder }]}
+                  placeholder="0"
+                  placeholderTextColor={colors.textMuted + '60'}
+                  value={walletAmount}
+                  onChangeText={setWalletAmount}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+
+              <View style={styles.infoGroup}>
+                <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Current Wallet Total</Text>
+                <Text style={[styles.infoValue, { color: colors.text }]}>
+                  {formatCurrency(walletBalances[String(selectedWallet?.id || '')] || 0, true)}
+                </Text>
+                <Text style={[styles.infoHint, { color: colors.textMuted }]}>This total includes transactions in this wallet.</Text>
+              </View>
 
               <View style={styles.modalActions}>
                 <Pressable style={[styles.btnCancel, { backgroundColor: colors.background }]} onPress={closeModals}>

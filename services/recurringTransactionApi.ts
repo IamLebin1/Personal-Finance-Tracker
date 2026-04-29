@@ -1,5 +1,6 @@
 import { config } from '../config/appConfig';
 import { getAuthSession } from './authSession';
+import { clearTransactionCache } from './transactionService';
 
 export type RecurringFrequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
 export type RecurringTransactionType = 'income' | 'expense';

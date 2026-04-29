@@ -76,7 +76,7 @@ export async function createWallet(input: { name: string; color?: string; icon?:
   };
 }
 
-export async function updateWallet(id: string, input: { name: string; color?: string; icon?: string }): Promise<void> {
+export async function updateWallet(id: string, input: { name: string; color?: string; icon?: string; initialBalance?: number }): Promise<void> {
   // Ensure session is loaded before making the request
   await getValidSession();
 

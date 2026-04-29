@@ -23,7 +23,7 @@ import { getAuthSession } from '../services/authSession';
 import { getTransactionsByUser } from '../services/transactionApi';
 import { getWallets, createWallet } from '../services/walletApi';
 import { getSelectedWalletId, setSelectedWalletId } from '../services/walletService';
-import { formatCurrency, getSpendingByCategory } from '../services/transactionService';
+import { formatCurrency } from '../services/transactionService';
 import type { Transaction, Wallet } from '../types/transaction';
 import type { CategorySpending } from '../services/transactionService';
 import { getCategoryData } from '../constants/categories';
@@ -87,6 +87,18 @@ function formatCategoryLabel(category: string): string {
   return category.split(/[-_\s]+/).filter(Boolean).map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
 }
 
+function isInPeriod(dateValue: Date, periodMode: 'month' | 'year' | 'all', selectedMonth: number, selectedYear: number): boolean {
+  if (periodMode === 'all') return true;
+  if (periodMode === 'year') return dateValue.getFullYear() === selectedYear;
+  return dateValue.getFullYear() === selectedYear && dateValue.getMonth() === selectedMonth;
+}
+
+function getPeriodLabel(periodMode: 'month' | 'year' | 'all', selectedMonth: number, selectedYear: number): string {
+  if (periodMode === 'all') return 'All Time';
+  if (periodMode === 'year') return String(selectedYear);
+  return new Date(selectedYear, selectedMonth, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
 function Dashboard({ navigation }: { navigation: any }) {
   const { colors, isDark } = useTheme();
   
@@ -105,9 +117,14 @@ function Dashboard({ navigation }: { navigation: any }) {
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
   const [isWalletModalVisible, setIsWalletModalVisible] = useState(false);
   const [isAddingWallet, setIsAddingWallet] = useState(false);
-  const [isManagingWallets, setIsManagingWallets] = useState(false);
   const [newWalletName, setNewWalletName] = useState('');
   const [newWalletAmount, setNewWalletAmount] = useState('');
+  const [walletBalances, setWalletBalances] = useState<Record<string, number>>({});
+  const [periodMode, setPeriodMode] = useState<'month' | 'year' | 'all'>('month');
+  const [selectedPeriodMonth, setSelectedPeriodMonth] = useState(new Date().getMonth());
+  const [selectedPeriodYear, setSelectedPeriodYear] = useState(new Date().getFullYear());
+  const [isPeriodModalVisible, setIsPeriodModalVisible] = useState(false);
+  const [isBalanceVisible, setIsBalanceVisible] = useState(true);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -126,9 +143,9 @@ function Dashboard({ navigation }: { navigation: any }) {
         
         const currentMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
         
-        const [allTransactions, categoryData, budgetData, profData] = await Promise.all([
+        const [scopedTransactions, globalTransactions, budgetData, profData] = await Promise.all([
           getTransactionsByUser(undefined, currentWallet?.id),
-          getSpendingByCategory(currentWallet?.id),
+          getTransactionsByUser(),
           getBudgets(currentMonthKey),
           fetch(`${config.apiBaseUrl}/api/auth/profile`, {
             headers: { Authorization: `Bearer ${getAuthSession()?.token}` }
@@ -137,16 +154,45 @@ function Dashboard({ navigation }: { navigation: any }) {
 
         if (!isMounted) return;
 
-        const sortedTransactions = [...allTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        const income = allTransactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);
-        const expenses = allTransactions.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0);
-        const budgetVal = budgetData.find(b => b.category === 'Total')?.amount || 0;
+        const periodTransactions = scopedTransactions.filter(item => {
+          const date = new Date(item.date);
+          return !Number.isNaN(date.getTime()) && isInPeriod(date, periodMode, selectedPeriodMonth, selectedPeriodYear);
+        });
+        const sortedTransactions = [...periodTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const income = periodTransactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);
+        const expenses = periodTransactions.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0);
+        const budgetVal = periodMode === 'month' ? (budgetData.find(b => b.category === 'Total')?.amount || 0) : 0;
+
+        const nextWalletBalances: Record<string, number> = {};
+        fetchedWallets.forEach(wallet => {
+          nextWalletBalances[String(wallet.id)] = Number(wallet.initialBalance || 0);
+        });
+        globalTransactions.forEach(tx => {
+          if (!tx.walletId) return;
+          const key = String(tx.walletId);
+          if (nextWalletBalances[key] === undefined) {
+            nextWalletBalances[key] = 0;
+          }
+          nextWalletBalances[key] += tx.type === 'income' ? tx.amount : -tx.amount;
+        });
+
+        const categoryLookup = new Map<string, number>();
+        periodTransactions
+          .filter(item => item.type === 'expense')
+          .forEach(item => {
+            categoryLookup.set(item.category, (categoryLookup.get(item.category) || 0) + item.amount);
+          });
+        const categoryData = Array.from(categoryLookup.entries())
+          .map(([category, amount]) => ({ category, amount }))
+          .sort((a, b) => b.amount - a.amount);
+        const totalCategoryAmount = categoryData.reduce((s, c) => s + c.amount, 0);
+        const categoryWithPercent = categoryData.map(c => ({ ...c, percentage: totalCategoryAmount > 0 ? (c.amount / totalCategoryAmount) * 100 : 0 }));
         
         // Calculate balance including initial wallet balance
         let totalWalletBalance = income - expenses;
-        if (!isAllWallets && currentWallet?.initialBalance) {
+        if (periodMode === 'all' && !isAllWallets && currentWallet?.initialBalance) {
           totalWalletBalance += currentWallet.initialBalance;
-        } else if (isAllWallets) {
+        } else if (periodMode === 'all' && isAllWallets) {
           // For all wallets view, sum initial balances from all wallets
           const allInitialBalance = fetchedWallets.reduce((sum, w) => sum + (w.initialBalance || 0), 0);
           totalWalletBalance += allInitialBalance;
@@ -154,14 +200,15 @@ function Dashboard({ navigation }: { navigation: any }) {
 
         setProfileData(profData);
         setWallets(fetchedWallets);
+        setWalletBalances(nextWalletBalances);
         setSelectedWallet(currentWallet);
         setIncomeTotal(income);
         setExpenseTotal(expenses);
         setTotalBalance(totalWalletBalance);
         setTotalBudget(budgetVal);
         setRecentTransactions(sortedTransactions.slice(0, 5));
-        setCategories(categoryData.slice(0, 4));
-        setMonthTrend(calculateMonthOverMonthTrend(allTransactions));
+        setCategories(categoryWithPercent.slice(0, 4));
+        setMonthTrend(periodMode === 'month' ? calculateMonthOverMonthTrend(scopedTransactions) : 0);
         hasLoadedRef.current = true;
       } catch (err) {
         console.error(err);
@@ -175,7 +222,7 @@ function Dashboard({ navigation }: { navigation: any }) {
     }
     fetchData();
     return () => { isMounted = false; };
-  }, []);
+  }, [periodMode, selectedPeriodMonth, selectedPeriodYear]);
 
   const handleSelectWallet = async (wallet: Wallet) => {
     await setSelectedWalletId(String(wallet.id));
@@ -295,6 +342,15 @@ function Dashboard({ navigation }: { navigation: any }) {
               </Svg>
             </View>
             <View style={styles.balanceContentWrapper}>
+              <View style={styles.balanceMetaRow}>
+                <Pressable style={[styles.periodSelector, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setIsPeriodModalVisible(true)}>
+                  <Text style={[styles.periodText, { color: colors.textMuted }]}>{getPeriodLabel(periodMode, selectedPeriodMonth, selectedPeriodYear)}</Text>
+                  <Text style={[styles.periodChevron, { color: colors.textMuted }]}>▼</Text>
+                </Pressable>
+                <Pressable style={[styles.eyeButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setIsBalanceVisible(prev => !prev)}>
+                  <Text style={styles.eyeButtonIcon}>{isBalanceVisible ? '👁️' : '🙈'}</Text>
+                </Pressable>
+              </View>
               <View style={styles.balanceHeader}>
                 <Pressable style={[styles.walletSelector, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setIsWalletModalVisible(true)}>
                   <Text style={[styles.balanceLabel, { color: colors.textMuted }]}>{selectedWallet?.name || 'Total Balance'}</Text>
@@ -304,7 +360,7 @@ function Dashboard({ navigation }: { navigation: any }) {
                   <Text style={[styles.trendText, { color: monthTrend < 0 ? colors.danger : colors.success }]}>{monthTrend >= 0 ? '↗' : '↘'} {formatTrendPercent(monthTrend)}</Text>
                 </View>
               </View>
-              <Text style={[styles.balanceValue, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>{isLoading ? '...' : formatCurrency(totalBalance, true)}</Text>
+              <Text style={[styles.balanceValue, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>{isLoading ? '...' : (isBalanceVisible ? formatCurrency(totalBalance, true) : '••••••')}</Text>
             </View>
             <View style={[styles.cardDivider, { backgroundColor: colors.cardBorder }]} />
             <View style={styles.statsRow}>
@@ -399,38 +455,32 @@ function Dashboard({ navigation }: { navigation: any }) {
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContent}>
             <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]} onPress={e => e.stopPropagation()}>
               <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: colors.text }]}>{isAddingWallet ? 'Create New Wallet' : (isManagingWallets ? 'Manage Wallets' : 'Select Wallet')}</Text>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>{isAddingWallet ? 'Create New Wallet' : 'Select Wallet'}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   {!isAddingWallet && (
-                    <Pressable onPress={() => setIsManagingWallets(!isManagingWallets)} style={[styles.manageBtn, { backgroundColor: colors.primaryBg }]}>
-                      <Text style={[styles.manageBtnText, { color: colors.primary }]}>{isManagingWallets ? 'Done' : 'Manage'}</Text>
+                    <Pressable onPress={() => { setIsWalletModalVisible(false); setIsAddingWallet(false); navigation.navigate('WalletManagement'); }} style={[styles.manageBtn, { backgroundColor: colors.primaryBg }]}>
+                      <Text style={[styles.manageBtnText, { color: colors.primary }]}>Manage</Text>
                     </Pressable>
                   )}
-                  <Pressable onPress={() => { setIsWalletModalVisible(false); setIsAddingWallet(false); setIsManagingWallets(false); }}><Text style={[styles.modalCloseText, { color: colors.textMuted }]}>✕</Text></Pressable>
+                  <Pressable onPress={() => { setIsWalletModalVisible(false); setIsAddingWallet(false); }}><Text style={[styles.modalCloseText, { color: colors.textMuted }]}>✕</Text></Pressable>
                 </View>
               </View>
 
               {!isAddingWallet ? (
                 <ScrollView style={styles.walletList} showsVerticalScrollIndicator={false}>
-                  {!isManagingWallets && (
-                    <Pressable 
-                      style={[styles.walletItem, !selectedWallet && styles.walletItemActive, { backgroundColor: !selectedWallet ? colors.primaryBg : colors.background, borderColor: !selectedWallet ? colors.primary : 'transparent' }]}
-                      onPress={() => { setSelectedWalletId(''); setSelectedWallet(null); setIsWalletModalVisible(false); refreshCallback(); }}
-                    >
-                      <View style={[styles.walletIconBox, { backgroundColor: colors.primaryBg }]}><Text style={styles.walletIcon}>🌐</Text></View>
-                      <View style={styles.walletInfo}><Text style={[styles.walletNameText, { color: colors.text }]}>All Wallets</Text><Text style={[styles.walletCreatedText, { color: colors.textMuted }]}>Combined view</Text></View>
-                      {!selectedWallet && <View style={[styles.checkCircle, { backgroundColor: colors.primary }]}><Text style={styles.checkIcon}>✓</Text></View>}
-                    </Pressable>
-                  )}
+                  <Pressable 
+                    style={[styles.walletItem, !selectedWallet && styles.walletItemActive, { backgroundColor: !selectedWallet ? colors.primaryBg : colors.background, borderColor: !selectedWallet ? colors.primary : 'transparent' }]}
+                    onPress={() => { setSelectedWalletId(''); setSelectedWallet(null); setIsWalletModalVisible(false); refreshCallback(); }}
+                  >
+                    <View style={[styles.walletIconBox, { backgroundColor: colors.primaryBg }]}><Text style={styles.walletIcon}>🌐</Text></View>
+                    <View style={styles.walletInfo}><Text style={[styles.walletNameText, { color: colors.text }]}>All Wallets</Text><Text style={[styles.walletCreatedText, { color: colors.textMuted }]}>Combined view</Text></View>
+                    {!selectedWallet && <View style={[styles.checkCircle, { backgroundColor: colors.primary }]}><Text style={styles.checkIcon}>✓</Text></View>}
+                  </Pressable>
                   {wallets.map(wallet => (
-                    <Pressable key={wallet.id} style={[styles.walletItem, selectedWallet?.id === wallet.id && !isManagingWallets && styles.walletItemActive, { backgroundColor: (selectedWallet?.id === wallet.id && !isManagingWallets) ? colors.primaryBg : colors.background, borderColor: (selectedWallet?.id === wallet.id && !isManagingWallets) ? colors.primary : 'transparent' }]} onPress={() => isManagingWallets ? null : handleSelectWallet(wallet)}>
+                    <Pressable key={wallet.id} style={[styles.walletItem, selectedWallet?.id === wallet.id && styles.walletItemActive, { backgroundColor: selectedWallet?.id === wallet.id ? colors.primaryBg : colors.background, borderColor: selectedWallet?.id === wallet.id ? colors.primary : 'transparent' }]} onPress={() => handleSelectWallet(wallet)}>
                       <View style={[styles.walletIconBox, { backgroundColor: wallet.color + '20' }]}><Text style={styles.walletIcon}>{wallet.icon}</Text></View>
-                      <View style={styles.walletInfo}><Text style={[styles.walletNameText, { color: colors.text }]}>{wallet.name}</Text><Text style={[styles.walletCreatedText, { color: colors.textMuted }]}>Created {new Date(wallet.createdAt).toLocaleDateString()}</Text></View>
-                      {isManagingWallets ? (
-                        <Pressable style={[styles.deleteWalletBtn, { backgroundColor: colors.danger + '20' }]} onPress={() => handleDeleteWallet(wallet)}><Text style={styles.deleteWalletIcon}>🗑️</Text></Pressable>
-                      ) : (
-                        selectedWallet?.id === wallet.id && <View style={[styles.checkCircle, { backgroundColor: colors.primary }]}><Text style={styles.checkIcon}>✓</Text></View>
-                      )}
+                      <View style={styles.walletInfo}><Text style={[styles.walletNameText, { color: colors.text }]}>{wallet.name}</Text><Text style={[styles.walletCreatedText, { color: colors.textMuted }]}>Balance {formatCurrency(walletBalances[String(wallet.id)] || 0, true)}</Text></View>
+                      {selectedWallet?.id === wallet.id && <View style={[styles.checkCircle, { backgroundColor: colors.primary }]}><Text style={styles.checkIcon}>✓</Text></View>}
                     </Pressable>
                   ))}
                   <Pressable style={[styles.addWalletBtn, { borderColor: colors.textMuted + '40' }]} onPress={() => setIsAddingWallet(true)}>
@@ -454,6 +504,143 @@ function Dashboard({ navigation }: { navigation: any }) {
           </KeyboardAvoidingView>
         </Pressable>
       </Modal>
+
+      <Modal visible={isPeriodModalVisible} transparent animationType="fade" onRequestClose={() => setIsPeriodModalVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setIsPeriodModalVisible(false)}>
+          <Pressable style={[styles.periodModalCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]} onPress={e => e.stopPropagation()}>
+            <Text style={[styles.periodModalTitle, { color: colors.text, textAlign: 'center' }]}>Financial Data Period</Text>
+            <Text style={[styles.periodModalSubtitle, { color: colors.textMuted, textAlign: 'center' }]}>Choose a month, a year, or all time.</Text>
+
+            <View style={styles.periodChoiceList}>
+              {(['month', 'year', 'all'] as const).map(option => {
+                const isActive = periodMode === option;
+                return (
+                  <Pressable
+                    key={option}
+                    style={[
+                      styles.periodChoiceCard,
+                      {
+                        backgroundColor: isActive ? colors.primaryBg : colors.background,
+                        borderColor: isActive ? colors.primary : colors.cardBorder,
+                      },
+                    ]}
+                    onPress={() => setPeriodMode(option)}
+                  >
+                    <View style={styles.periodChoiceTextWrap}>
+                      <Text style={[styles.periodChoiceTitle, { color: isActive ? colors.primary : colors.text }]}>
+                        {option === 'month' ? 'Pick Month' : option === 'year' ? 'Pick Year' : 'All Time'}
+                      </Text>
+                      <Text style={[styles.periodChoiceDescription, { color: colors.textMuted }]}>
+                        {option === 'month'
+                          ? getPeriodLabel('month', selectedPeriodMonth, selectedPeriodYear)
+                          : option === 'year'
+                            ? getPeriodLabel('year', selectedPeriodMonth, selectedPeriodYear)
+                            : 'Everything in your wallet history'}
+                      </Text>
+                    </View>
+                    <Text style={[styles.periodChoiceChevron, { color: isActive ? colors.primary : colors.textMuted }]}>▾</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {periodMode === 'month' && (
+              <View style={styles.periodPickerBlock}>
+                <View style={styles.periodPickerHeaderRow}>
+                  <Pressable
+                    onPress={() => setSelectedPeriodYear(prev => prev - 1)}
+                    style={[styles.periodArrowButton, { backgroundColor: colors.background, borderColor: colors.cardBorder }]}
+                  >
+                    <Text style={[styles.periodArrowText, { color: colors.text }]}>‹</Text>
+                  </Pressable>
+                  <Text style={[styles.periodPickerHeading, { color: colors.text }]}>{selectedPeriodYear}</Text>
+                  <Pressable
+                    onPress={() => setSelectedPeriodYear(prev => prev + 1)}
+                    style={[styles.periodArrowButton, { backgroundColor: colors.background, borderColor: colors.cardBorder }]}
+                  >
+                    <Text style={[styles.periodArrowText, { color: colors.text }]}>›</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.monthGrid}>
+                  {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, index) => {
+                    const isSelected = selectedPeriodMonth === index;
+                    return (
+                      <Pressable
+                        key={month}
+                        onPress={() => {
+                          setSelectedPeriodMonth(index);
+                          setPeriodMode('month');
+                        }}
+                        style={[
+                          styles.monthCell,
+                          {
+                            backgroundColor: isSelected ? colors.primary : colors.background,
+                            borderColor: isSelected ? colors.primary : colors.cardBorder,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.monthCellText, { color: isSelected ? '#fff' : colors.text }]}>{month}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Pressable
+                  style={[styles.periodApplyBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => setIsPeriodModalVisible(false)}
+                >
+                  <Text style={styles.periodApplyText}>Apply Month</Text>
+                </Pressable>
+              </View>
+            )}
+
+            {periodMode === 'year' && (
+              <View style={styles.periodPickerBlock}>
+                <View style={styles.periodPickerHeaderRow}>
+                  <Pressable
+                    onPress={() => setSelectedPeriodYear(prev => prev - 1)}
+                    style={[styles.periodArrowButton, { backgroundColor: colors.background, borderColor: colors.cardBorder }]}
+                  >
+                    <Text style={[styles.periodArrowText, { color: colors.text }]}>‹</Text>
+                  </Pressable>
+                  <Text style={[styles.periodPickerHeading, { color: colors.text }]}>{selectedPeriodYear}</Text>
+                  <Pressable
+                    onPress={() => setSelectedPeriodYear(prev => prev + 1)}
+                    style={[styles.periodArrowButton, { backgroundColor: colors.background, borderColor: colors.cardBorder }]}
+                  >
+                    <Text style={[styles.periodArrowText, { color: colors.text }]}>›</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.yearGrid}>
+                  {Array.from({ length: 9 }, (_, index) => selectedPeriodYear - 4 + index).map(year => {
+                    const isSelected = year === selectedPeriodYear;
+                    return (
+                      <Pressable
+                        key={year}
+                        onPress={() => setSelectedPeriodYear(year)}
+                        style={[
+                          styles.yearCell,
+                          {
+                            backgroundColor: isSelected ? colors.primary : colors.background,
+                            borderColor: isSelected ? colors.primary : colors.cardBorder,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.yearCellText, { color: isSelected ? '#fff' : colors.text }]}>{year}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Pressable
+                  style={[styles.periodApplyBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => setIsPeriodModalVisible(false)}
+                >
+                  <Text style={styles.periodApplyText}>Apply Year</Text>
+                </Pressable>
+              </View>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -473,24 +660,30 @@ const styles = StyleSheet.create({
   wealthSection: { marginBottom: 32 },
   balanceCard: { height: 220, borderRadius: 24, padding: 24, justifyContent: 'space-between', shadowColor: '#000', shadowOffset: { width: 0, height: 15 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 15, overflow: 'hidden', borderWidth: 1 },
   balanceContentWrapper: { flex: 1, justifyContent: 'center' },
+  balanceMetaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  periodSelector: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
+  periodText: { fontSize: 12, fontWeight: '700' },
+  periodChevron: { fontSize: 10, marginLeft: 6 },
+  eyeButton: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  eyeButtonIcon: { fontSize: 16 },
   balanceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   walletSelector: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
   balanceLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase' },
   walletChevron: { fontSize: 10, marginLeft: 6 },
-  balanceValue: { fontSize: 42, fontWeight: '800', letterSpacing: -0.5, minFontSize: 28 },
+  balanceValue: { fontSize: 42, fontWeight: '800', letterSpacing: -0.5 },
   cardDivider: { height: 1, marginVertical: 18 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
   statColumn: { flex: 1 },
   statLabelSmall: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginBottom: 4 },
   statValueRow: { flexDirection: 'row', alignItems: 'center' },
   miniIndicator: { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
-  statValueSmall: { fontSize: 16, fontWeight: '700', minFontSize: 10 },
+  statValueSmall: { fontSize: 16, fontWeight: '700' },
   trendBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
   trendText: { fontSize: 12, fontWeight: '700' },
   budgetCard: { marginTop: 16, padding: 20, borderRadius: 24, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 15, elevation: 5 },
   budgetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   budgetLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
-  budgetValue: { fontSize: 18, fontWeight: '800', marginTop: 4, minFontSize: 12 },
+  budgetValue: { fontSize: 18, fontWeight: '800', marginTop: 4 },
   budgetPercentBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   budgetPercentText: { fontSize: 12, fontWeight: '800' },
   budgetRemaining: { fontSize: 12, fontWeight: '600', marginTop: 12 },
@@ -504,7 +697,7 @@ const styles = StyleSheet.create({
   catEmoji: { fontSize: 16, fontWeight: '800' },
   catPercent: { fontSize: 12, fontWeight: '700' },
   catName: { fontSize: 13, fontWeight: '600' },
-  catAmount: { fontSize: 17, fontWeight: '800', marginTop: 4, marginBottom: 12, minFontSize: 10 },
+  catAmount: { fontSize: 17, fontWeight: '800', marginTop: 4, marginBottom: 12 },
   progressBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3 },
   txList: { borderRadius: 28, padding: 8, borderWidth: 1 },
@@ -515,7 +708,7 @@ const styles = StyleSheet.create({
   txInfo: { flex: 1 },
   txCategory: { fontSize: 16, fontWeight: '700' },
   txDate: { fontSize: 12, marginTop: 3, fontWeight: '500' },
-  txAmount: { fontSize: 16, fontWeight: '800', letterSpacing: -0.2, minFontSize: 10 },
+  txAmount: { fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalContent: { width: '100%' },
   modalCard: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24, borderTopWidth: 1 },
@@ -548,6 +741,28 @@ const styles = StyleSheet.create({
   modalCancelText: { fontSize: 16, fontWeight: '600' },
   modalSaveBtn: { flex: 2, paddingVertical: 14, alignItems: 'center', borderRadius: 16 },
   modalSaveText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  periodModalCard: { width: '88%', borderRadius: 24, borderWidth: 1, padding: 18 },
+  periodModalTitle: { fontSize: 20, fontWeight: '800', marginBottom: 6 },
+  periodModalSubtitle: { fontSize: 12, fontWeight: '600', marginBottom: 16 },
+  periodChoiceList: { gap: 12 },
+  periodChoiceCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 16 },
+  periodChoiceTextWrap: { flex: 1, paddingRight: 10 },
+  periodChoiceTitle: { fontSize: 16, fontWeight: '800', marginBottom: 2 },
+  periodChoiceDescription: { fontSize: 12, fontWeight: '600' },
+  periodChoiceChevron: { fontSize: 14, fontWeight: '800' },
+  periodPickerBlock: { marginTop: 18 },
+  periodPickerHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  periodPickerHeading: { fontSize: 16, fontWeight: '800' },
+  periodArrowButton: { width: 40, height: 40, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  periodArrowText: { fontSize: 26, fontWeight: '300' },
+  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  monthCell: { width: '31%', borderWidth: 1, borderRadius: 14, paddingVertical: 11, alignItems: 'center' },
+  monthCellText: { fontSize: 13, fontWeight: '800' },
+  yearGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  yearCell: { width: '31%', borderWidth: 1, borderRadius: 14, paddingVertical: 11, alignItems: 'center' },
+  yearCellText: { fontSize: 13, fontWeight: '800' },
+  periodApplyBtn: { marginTop: 14, borderRadius: 14, paddingVertical: 12, alignItems: 'center' },
+  periodApplyText: { color: '#fff', fontSize: 14, fontWeight: '800' },
 });
 
 export default React.memo(Dashboard);

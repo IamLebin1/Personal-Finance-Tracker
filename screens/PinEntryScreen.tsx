@@ -18,7 +18,7 @@ import { DarkPalette } from '../constants/theme';
 
 const { width } = Dimensions.get('window');
 
-type Props = NativeStackScreenProps<RootStackParamList, 'PinEntry'>;
+type Props = any;
 
 const BackgroundDecor = () => (
   <View style={StyleSheet.absoluteFill}>

@@ -136,7 +136,11 @@ export async function setPreferredCurrency(code: CurrencyCode): Promise<void> {
 
 async function fetchUsdToMyrRate(): Promise<number | null> {
   try {
-    const response = await fetch(ALPHA_VANTAGE_RATE_URL, { timeout: 5000 });
+    // Use AbortController to implement a timeout for fetch
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(ALPHA_VANTAGE_RATE_URL, { signal: controller.signal });
+    clearTimeout(timeout);
     if (!response.ok) {
       return null;
     }
