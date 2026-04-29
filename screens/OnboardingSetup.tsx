@@ -16,7 +16,7 @@ import { setPreferredCurrency, type CurrencyCode, convertToUsd, getCurrencyState
 import { createWallet } from '../services/walletApi';
 import { setSelectedWalletId } from '../services/walletService';
 import { insertTransaction } from '../services/transactionApi';
-import { getAuthSession } from '../services/authSession';
+import { clearAuthSession, getAuthSession } from '../services/authSession';
 import { setOnboardingCompleted } from '../services/onboardingService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OnboardingSetup'>;
@@ -88,6 +88,17 @@ export default function OnboardingSetup({ navigation }: Props) {
       navigation.replace('MainTabs');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to finish setup right now.';
+      const maybeStatus = (error as any)?.status;
+
+      // If our local session token no longer exists on the server (e.g. after DB/server changes),
+      // recover by logging out and forcing a fresh login.
+      if (maybeStatus === 401 || message.toLowerCase().includes('invalid or expired token')) {
+        await clearAuthSession();
+        Alert.alert('Session expired', 'Please login again.');
+        navigation.replace('Login');
+        return;
+      }
+
       Alert.alert('Setup failed', message);
     } finally {
       setSubmitting(false);

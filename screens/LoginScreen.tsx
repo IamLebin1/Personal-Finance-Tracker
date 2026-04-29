@@ -174,7 +174,7 @@ const LoginScreen = ({ navigation, route }: Props) => {
               </View>
               <Text style={styles.brandTitle}>Finance</Text>
             </View>
-            <TouchableOpacity style={styles.helpButton}>
+            <TouchableOpacity style={styles.helpButton} onPress={() => navigation.navigate('HelpSupport')}>
               <Text style={styles.helpText}>Help</Text>
             </TouchableOpacity>
           </View>
