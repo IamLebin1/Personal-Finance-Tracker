@@ -2,6 +2,11 @@
 
 A premium, dark-themed React Native application for tracking wealth, expenses, and financial insights. Features smooth animations, data visualization, and a secure backend.
 
+# IMPORTANT:
+- MUST EDIT `config/appConfig.ts` to point to your local backend URL (e.g., `http://10.0.2.2:5001`) for Android Emulators.
+- The backend must be running (`node db/service.js`) for the app to function properly. 
+- The backend must be running (`node db/user.js`) for the app to function properly. 
+
 ## 🚀 Features
 
 - **Dashboard**: Real-time balance overview with interactive Income/Expense cards.
