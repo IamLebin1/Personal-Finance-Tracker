@@ -1,170 +1,118 @@
 # Personal Finance Tracker
 
-Personal Finance Tracker is a React Native app for tracking income, expenses, history, and spending analytics.
+A premium, dark-themed React Native application for tracking wealth, expenses, and financial insights. Features smooth animations, data visualization, and a secure backend.
 
-## Features
+## 🚀 Features
 
-- Dashboard with balance and recent transactions
-- Add, edit, and delete transactions
-- Transaction history with filters and search
-- Analytics for spending trends and categories
-- Local SQLite data storage
+- **Dashboard**: Real-time balance overview with interactive Income/Expense cards.
+- **Recent Activity**: Modern transaction list with detailed date formatting and descending sorting.
+- **Financial Insights**: 
+  - Bezier Curve spending graph (Newest data on the left).
+  - Monthly spending trend indicators.
+  - Interactive calendar showing daily net surplus/expense totals.
+- **Transaction Management**: Add transactions with a built-in calculator and circular reveal transition.
+- **Profile Management**: Functional personal details editor (username, email, phone) synced with the backend.
+- **Smooth Transitions**: Optimized with `InteractionManager` for a lag-free experience.
 
-## Tech Stack
+---
 
-- React Native + TypeScript
-- React Navigation
-- SQLite
-- Express demo backend (optional)
+## 🛠️ Prerequisites
 
-## Project Structure
+Before you begin, ensure you have the following installed:
+- **Node.js**: v22.11.0 or higher
+- **Java JDK**: 17 (for Android)
+- **Android Studio**: Configured with SDK, Platform Tools, and Emulator.
+- **Git**: To clone the repository.
 
-- `App.tsx` - App entry and root navigation
-- `screens/` - Main app screens
-- `navigation/` - Stack, tab, and drawer navigators
-- `components/` - Reusable UI components
-- `services/` - App services and API helpers
-- `db/` - Optional Node.js backend demo
-- `config/` - Local app configuration
+---
 
-## Prerequisites
+## 📦 Installation & Setup
 
-- Node.js 22.11.0 or higher
-- React Native development environment (Android Studio / Xcode)
+Follow these steps in order to get the app running.
 
-<<<<<<< HEAD
-## Setup Instructions
-1. Clone and enter the project:
-   ```bash
-   git clone https://github.com/iamLebin1/Personal-Finance-Tracker.git
-   cd Personal-Finance-Tracker
-   ```
-
-2. Install dependencies:
-    ```bash
-    npm install --legacy-peer-deps
-    ```
-
-3. Create your local app config (required):
-    ```bash
-    copy config\appConfig.example.ts config\appConfig.ts
-    ```
-    *Note: `config/appConfig.ts` is gitignored, so each developer must create their own local copy.*
-
-4. Edit `config/appConfig.ts` for your environment:
-    - `APP_MODE` (for example: `local`)
-    - `SQLITE_DB_NAME` (for example: `finance_tracker.sqlite`)
-    - `SQLITE_SEED_DEMO` (`true` or `false`)
-    - `API_BASE_URL` (if using backend mode)
-
-5. Run the application:
-    ```bash
-    npx react-native run-android
-    ```
-=======
-## Quick Start
-
-1. Clone and enter the project:
-
+### 1. Clone the Repository
 ```bash
 git clone https://github.com/iamLebin1/Personal-Finance-Tracker.git
 cd Personal-Finance-Tracker
 ```
 
-2. Install dependencies:
->>>>>>> 35d555e7e9f430e0a4ff385d572955c3a02f1ca4
-
+### 2. Install Dependencies
 ```bash
 npm install --legacy-peer-deps
 ```
 
-3. Create your local app config (required):
-
+### 3. Setup Configuration
+The app requires a local configuration file. Copy the example to create your own:
 ```bash
+# Windows
 copy config\appConfig.example.ts config\appConfig.ts
+
+# Mac / Linux
+cp config/appConfig.example.ts config/appConfig.ts
 ```
+*Note: Open `config/appConfig.ts` and ensure `apiBaseUrl` points to `http://10.0.2.2:5001` for Android Emulators.*
 
-`config/appConfig.ts` is gitignored, so each developer must create their own local copy.
+---
 
-4. Edit `config/appConfig.ts` for your environment:
+## 🖥️ Running the Backend (Required for Auth & Data)
 
-- `APP_MODE` (for example: `local`)
-- `SQLITE_DB_NAME` (for example: `finance_tracker.sqlite`)
-- `SQLITE_SEED_DEMO` (`true` or `false`)
-- `API_BASE_URL` (if using backend mode)
+The app uses a Node.js/SQLite backend for data persistence and profile management.
 
-## Run the App
+1. **Navigate to the root directory** (if not already there).
+2. **Start the server**:
+   ```bash
+   node db/service.js
+   ```
+3. **Verify**: You should see `Server running on port 5001`. The backend will automatically create and seed the SQLite database if it doesn't exist.
 
-Start Metro:
+---
 
+## 📱 Running the Mobile App
+
+### 1. Android
+Ensure an emulator is running or a device is connected via ADB.
 ```bash
-npm start
-```
-
-Run on Android:
-
-```bash
+# In a new terminal window
 npm run android
 ```
 
-Run on iOS:
-
+### 2. iOS (Mac Only)
 ```bash
+# Install pods first
+cd ios && pod install && cd ..
+# Run the app
 npm run ios
 ```
 
-## Optional Backend Demo
+---
 
-If you want to run the demo API server in `db/service.js`:
+## 🔧 Troubleshooting
 
-1. Start backend:
+### "Failed to load profile details"
+1. **Restart Backend**: Stop the `node db/service.js` process and restart it.
+2. **Port Check**: Ensure the server is on `5001` and the app config matches.
+3. **ADB Reverse**: If using a real Android device via USB:
+   ```bash
+   adb reverse tcp:5001 tcp:5001
+   ```
 
-```bash
-cd db
-node service.js
-```
+### "JSRangeErrorException" (Intl Error)
+This error occurs on older Hermes versions. I have patched the app to use `en-US` and lowercase options (e.g., `{ month: 'long' }`) to fix this. Ensure you are using the latest code.
 
-2. Test endpoint:
+### App is Laggy
+The app is optimized to wait for transitions. If it feels slow, it's often the debugger. Try running without the debugger or in Release mode for best performance.
 
-```text
-http://localhost:5000/api/transactions
-```
+---
 
-## API Base URL Guide
+## 📂 Project Structure
 
-Use the correct URL for your device target:
+- `screens/`: UI screens (Dashboard, Analytics, History, Profile).
+- `navigation/`: Navigation stacks and tab definitions.
+- `services/`: API communication and transaction business logic.
+- `db/`: Backend server and SQLite database logic.
+- `components/`: Custom UI elements like the `FinanceTabBar`.
 
-- Android emulator: `http://10.0.2.2:5000`
-- iOS simulator: `http://localhost:5000`
-- Real device: `http://<your-lan-ip>:5000` (example: `http://192.168.1.10:5000`)
+---
 
-## Troubleshooting
-
-### App does not build
-
-- Confirm React Native environment is fully set up
-- Reinstall dependencies if needed (remove `node_modules` manually, then run):
-
-```bash
-npm install --legacy-peer-deps
-```
-
-### Registration fails
-
-1. Confirm backend is running:
-
-```bash
-cd db
-node service.js
-node user.js
-```
-
-2. Confirm `API_BASE_URL` in `config/appConfig.ts` matches your device target.
-
-3. If username is duplicated, register with a different username.
-
-4. Optional quick register test:
-
-```powershell
-Invoke-RestMethod -Method Post -Uri "http://localhost:5000/api/auth/register" -ContentType "application/json" -Body (@{ username = "testuser_new"; password = "123456" } | ConvertTo-Json)
-```
+## 📜 License
+This project is for educational purposes.

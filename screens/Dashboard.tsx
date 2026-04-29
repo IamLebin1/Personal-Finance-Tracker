@@ -1,11 +1,37 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import { 
+  ActivityIndicator, 
+  Pressable, 
+  ScrollView, 
+  StyleSheet, 
+  Text, 
+  View, 
+  Dimensions, 
+  Animated, 
+  StatusBar,
+  InteractionManager,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+  Image
+} from 'react-native';
+import Svg, { Path, Defs, LinearGradient, Stop, Rect, Circle } from 'react-native-svg';
 import { getAuthSession } from '../services/authSession';
 import { getTransactionsByUser } from '../services/transactionApi';
-import { formatCurrency } from '../services/transactionService';
-import type { Transaction } from '../types/transaction';
+import { getWallets, createWallet } from '../services/walletApi';
+import { getSelectedWalletId, setSelectedWalletId } from '../services/walletService';
+import { formatCurrency, getSpendingByCategory } from '../services/transactionService';
+import type { Transaction, Wallet } from '../types/transaction';
+import type { CategorySpending } from '../services/transactionService';
+import { getCategoryData } from '../constants/categories';
+import { useTheme } from '../context/ThemeContext';
+import { getBudgets } from '../services/budgetApi';
+import { config } from '../config/appConfig';
+
+const { width } = Dimensions.get('window');
 
 function getMonthKey(dateValue: Date): string {
   return `${dateValue.getFullYear()}-${dateValue.getMonth()}`;
@@ -27,642 +53,478 @@ function calculateMonthOverMonthTrend(transactions: Transaction[]): number {
 
   transactions.forEach(item => {
     const itemDate = new Date(item.date);
-    if (Number.isNaN(itemDate.getTime())) {
-      return;
-    }
-
+    if (Number.isNaN(itemDate.getTime())) return;
     const itemMonthKey = getMonthKey(itemDate);
     const signedAmount = toSignedAmount(item);
-
-    if (itemMonthKey === currentKey) {
-      currentMonthNet += signedAmount;
-    } else if (itemMonthKey === previousKey) {
-      previousMonthNet += signedAmount;
-    }
+    if (itemMonthKey === currentKey) currentMonthNet += signedAmount;
+    else if (itemMonthKey === previousKey) previousMonthNet += signedAmount;
   });
 
-  if (previousMonthNet === 0) {
-    if (currentMonthNet === 0) {
-      return 0;
-    }
-
-    return currentMonthNet > 0 ? 100 : -100;
-  }
-
+  if (previousMonthNet === 0) return currentMonthNet === 0 ? 0 : (currentMonthNet > 0 ? 100 : -100);
   return ((currentMonthNet - previousMonthNet) / Math.abs(previousMonthNet)) * 100;
 }
 
 function formatTrendPercent(value: number): string {
+  if (typeof value !== 'number' || isNaN(value)) return '0.0%';
   const sign = value > 0 ? '+' : '';
   return `${sign}${value.toFixed(1)}%`;
 }
 
-function calculateTypeMonthOverMonthTrend(
-  transactions: Transaction[],
-  type: Transaction['type'],
-): number {
-  const now = new Date();
-  const currentMonthDate = new Date(now.getFullYear(), now.getMonth(), 1);
-  const previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const currentKey = getMonthKey(currentMonthDate);
-  const previousKey = getMonthKey(previousMonthDate);
-
-  let currentMonthTotal = 0;
-  let previousMonthTotal = 0;
-
-  transactions.forEach(item => {
-    if (item.type !== type) {
-      return;
-    }
-
-    const itemDate = new Date(item.date);
-    if (Number.isNaN(itemDate.getTime())) {
-      return;
-    }
-
-    const itemMonthKey = getMonthKey(itemDate);
-
-    if (itemMonthKey === currentKey) {
-      currentMonthTotal += item.amount;
-    } else if (itemMonthKey === previousKey) {
-      previousMonthTotal += item.amount;
-    }
-  });
-
-  if (previousMonthTotal === 0) {
-    if (currentMonthTotal === 0) {
-      return 0;
-    }
-
-    return 100;
-  }
-
-  return ((currentMonthTotal - previousMonthTotal) / Math.abs(previousMonthTotal)) * 100;
-}
-
 function getDaytimeGreeting(): string {
   const hour = new Date().getHours();
-  if (hour < 12) {
-    return 'Good Morning';
-  }
-
-  if (hour < 18) {
-    return 'Good Afternoon';
-  }
-
+  if (hour < 12) return 'Good Morning';
+  if (hour < 18) return 'Good Afternoon';
   return 'Good Evening';
-}
-
-function buildSmoothPath(values: number[], width: number, height: number, padding = 3): string {
-  const safeWidth = Math.max(1, width - padding * 2);
-  const safeHeight = Math.max(1, height - padding * 2);
-
-  if (values.length === 0) {
-    const y = padding + safeHeight / 2;
-    return `M ${padding} ${y} L ${padding + safeWidth} ${y}`;
-  }
-
-  if (values.length === 1) {
-    const y = padding + safeHeight / 2;
-    return `M ${padding} ${y} L ${padding + safeWidth} ${y}`;
-  }
-
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-
-  const points = values.map((value, index) => {
-    const x = padding + (index / (values.length - 1)) * safeWidth;
-    const y = padding + (1 - (value - min) / range) * safeHeight;
-    return { x, y };
-  });
-
-  let path = `M ${points[0].x} ${points[0].y}`;
-
-  for (let index = 1; index < points.length; index += 1) {
-    const prev = points[index - 1];
-    const curr = points[index];
-    const cp1x = prev.x + (curr.x - prev.x) / 2;
-    const cp2x = curr.x - (curr.x - prev.x) / 2;
-    path += ` C ${cp1x} ${prev.y}, ${cp2x} ${curr.y}, ${curr.x} ${curr.y}`;
-  }
-
-  return path;
 }
 
 function formatTransactionDate(dateValue: string): string {
   const parsedDate = new Date(dateValue);
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    return dateValue;
-  }
-
-  const now = new Date();
-  const isToday =
-    parsedDate.getFullYear() === now.getFullYear() &&
-    parsedDate.getMonth() === now.getMonth() &&
-    parsedDate.getDate() === now.getDate();
-
-  const prefix = isToday
-    ? 'Today'
-    : parsedDate.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-      });
-
-  const time = parsedDate.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-
-  return `${prefix}, ${time}`;
+  if (Number.isNaN(parsedDate.getTime())) return dateValue;
+  return parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatCategoryLabel(category: string): string {
-  return category
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
+  return category.split(/[-_\s]+/).filter(Boolean).map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
 }
 
-function formatSignedAmount(transaction: Transaction): string {
-  const prefix = transaction.type === 'income' ? '+' : '-';
-  return `${prefix}${formatCurrency(transaction.amount)}`;
-}
-
-type DashboardProps = {
-  navigation: any;
-};
-
-export default function Dashboard({ navigation }: DashboardProps) {
-  const session = getAuthSession();
-  const displayName = session?.username?.trim() || 'User';
-  const profileInitial = displayName.charAt(0).toUpperCase();
+function Dashboard({ navigation }: { navigation: any }) {
+  const { colors, isDark } = useTheme();
+  
   const [totalBalance, setTotalBalance] = useState(0);
   const [incomeTotal, setIncomeTotal] = useState(0);
   const [expenseTotal, setExpenseTotal] = useState(0);
-  const [incomeTrend, setIncomeTrend] = useState(0);
-  const [expenseTrend, setExpenseTrend] = useState(0);
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
-  const [sparklineValues, setSparklineValues] = useState<number[]>([]);
+  const [categories, setCategories] = useState<CategorySpending[]>([]);
   const [monthTrend, setMonthTrend] = useState(0);
+  const [totalBudget, setTotalBudget] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileData, setProfileData] = useState<any>(null);
+  const hasLoadedRef = useRef(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      let isMounted = true;
+  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
+  const [isWalletModalVisible, setIsWalletModalVisible] = useState(false);
+  const [isAddingWallet, setIsAddingWallet] = useState(false);
+  const [isManagingWallets, setIsManagingWallets] = useState(false);
+  const [newWalletName, setNewWalletName] = useState('');
 
-      const refreshDashboard = async () => {
-        try {
-          const allTransactions = await getTransactionsByUser();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
-          const income = allTransactions
-            .filter(item => item.type === 'income')
-            .reduce((acc, item) => acc + item.amount, 0);
+  const refreshCallback = useCallback(() => {
+    let isMounted = true;
+    
+    const fetchData = async () => {
+      try {
+        await new Promise(resolve => InteractionManager.runAfterInteractions(() => resolve(null)));
+        
+        const fetchedWallets = await getWallets();
+        const savedWalletId = await getSelectedWalletId();
+        const isAllWallets = !savedWalletId || savedWalletId === 'all';
+        const currentWallet = isAllWallets ? null : (fetchedWallets.find(w => String(w.id) === String(savedWalletId)) || null);
+        
+        const currentMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+        
+        const [allTransactions, categoryData, budgetData, profData] = await Promise.all([
+          getTransactionsByUser(undefined, currentWallet?.id),
+          getSpendingByCategory(currentWallet?.id),
+          getBudgets(currentMonthKey),
+          fetch(`${config.apiBaseUrl}/api/auth/profile`, {
+            headers: { Authorization: `Bearer ${getAuthSession()?.token}` }
+          }).then(res => res.ok ? res.json() : null).catch(() => null)
+        ]);
 
-          const expenses = allTransactions
-            .filter(item => item.type === 'expense')
-            .reduce((acc, item) => acc + item.amount, 0);
+        if (!isMounted) return;
 
-          if (!isMounted) {
-            return;
-          }
+        const sortedTransactions = [...allTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const income = allTransactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);
+        const expenses = allTransactions.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0);
+        const budgetVal = budgetData.find(b => b.category === 'Total')?.amount || 0;
 
-          setIncomeTotal(income);
-          setExpenseTotal(expenses);
-          setTotalBalance(income - expenses);
-          setRecentTransactions(allTransactions.slice(0, 4));
-          setSparklineValues(allTransactions.slice(0, 8).reverse().map(item => toSignedAmount(item)));
-          setMonthTrend(calculateMonthOverMonthTrend(allTransactions));
-          setIncomeTrend(calculateTypeMonthOverMonthTrend(allTransactions, 'income'));
-          setExpenseTrend(calculateTypeMonthOverMonthTrend(allTransactions, 'expense'));
-        } catch {
-          if (isMounted) {
-            setRecentTransactions([]);
-          }
-        } finally {
-          if (isMounted) {
-            setIsLoading(false);
-          }
-        }
-      };
+        setProfileData(profData);
+        setWallets(fetchedWallets);
+        setSelectedWallet(currentWallet);
+        setIncomeTotal(income);
+        setExpenseTotal(expenses);
+        setTotalBalance(income - expenses);
+        setTotalBudget(budgetVal);
+        setRecentTransactions(sortedTransactions.slice(0, 5));
+        setCategories(categoryData.slice(0, 4));
+        setMonthTrend(calculateMonthOverMonthTrend(allTransactions));
+        hasLoadedRef.current = true;
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
 
+    if (!hasLoadedRef.current) {
       setIsLoading(true);
-      void refreshDashboard();
+    }
+    fetchData();
+    return () => { isMounted = false; };
+  }, []);
 
-      return () => {
-        isMounted = false;
-      };
-    }, []),
-  );
+  const handleSelectWallet = async (wallet: Wallet) => {
+    await setSelectedWalletId(String(wallet.id));
+    setSelectedWallet(wallet);
+    setIsWalletModalVisible(false);
+    refreshCallback();
+  };
+
+  const handleAddWallet = async () => {
+    if (!newWalletName.trim()) return;
+    try {
+      const wallet = await createWallet({ name: newWalletName.trim() });
+      setWallets(prev => [...prev, wallet]);
+      setNewWalletName('');
+      setIsAddingWallet(false);
+      handleSelectWallet(wallet);
+    } catch (err) { console.error(err); }
+  };
+
+  const handleDeleteWallet = async (wallet: Wallet) => {
+    Alert.alert('Delete Wallet', `Are you sure you want to delete "${wallet.name}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => {
+          Alert.alert('Final Confirmation', 'Transactions will be unassigned. Are you sure?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete Permanently', style: 'destructive', onPress: async () => {
+                try {
+                  await (require('../services/walletApi').deleteWallet)(wallet.id);
+                  if (selectedWallet?.id === wallet.id) { await setSelectedWalletId(''); setSelectedWallet(null); }
+                  setWallets(prev => prev.filter(w => w.id !== wallet.id));
+                  refreshCallback();
+                } catch (err) { console.error(err); Alert.alert('Error', 'Could not delete wallet.'); }
+              }
+            }
+          ]);
+        }
+      }
+    ]);
+  };
+
+  useEffect(() => {
+    if (!isLoading) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [isLoading]);
+
+  useFocusEffect(refreshCallback);
+
+  const session = getAuthSession();
+  const displayName = session?.username?.trim() || 'User';
+
+  const budgetProgress = totalBudget > 0 ? Math.min(100, (expenseTotal / totalBudget) * 100) : 0;
+  const isNearBudget = budgetProgress > 85;
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={colors.statusBar} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerRow}>
+        <Animated.View style={[styles.headerRow, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <View>
-            <Text style={styles.smallMuted}>Welcome back,</Text>
-            <Text style={styles.greeting}>{getDaytimeGreeting()}, {displayName}</Text>
+            <Text style={[styles.greetingText, { color: colors.textMuted }]}>{getDaytimeGreeting()}</Text>
+            <Text style={[styles.userName, { color: colors.text }]}>{displayName}</Text>
           </View>
-          <View style={styles.avatarWrap}>
-            <Text style={styles.avatarText}>{profileInitial}</Text>
-          </View>
-        </View>
-
-        <View style={styles.balanceCard}>
-          <View style={styles.balanceFadeLeft} />
-          <View style={styles.balanceFadeLeftSoft} />
-          <View style={styles.balanceFadeMiddle} />
-          <View style={styles.balanceFadeRight} />
-          <Text style={styles.balanceLabel}>Total Balance</Text>
-          {isLoading ? (
-            <ActivityIndicator color="#8f7bff" style={styles.loadingIndicator} />
-          ) : (
-            <Text style={[styles.balanceValue, totalBalance < 0 ? styles.negativeBalance : null]}>
-              {totalBalance < 0 ? '-' : ''}{formatCurrency(Math.abs(totalBalance))}
-            </Text>
-          )}
-          <View style={styles.balanceMetaRow}>
-            <View
-              style={[
-                styles.trendPill,
-                monthTrend < 0 ? styles.trendPillNegative : monthTrend === 0 ? styles.trendPillNeutral : null,
-              ]}
+          <View style={styles.headerActions}>
+            <Pressable 
+              onPress={() => navigation.navigate('Notifications')}
+              style={[styles.iconButton, { backgroundColor: colors.card }]}
             >
-              <Text
-                style={[
-                  styles.trendText,
-                  monthTrend < 0 ? styles.trendTextNegative : monthTrend === 0 ? styles.trendTextNeutral : null,
-                ]}
-              >
-                {formatTrendPercent(monthTrend)}
-              </Text>
-              <Text style={styles.trendSubText}>vs last month</Text>
-            </View>
-            <View style={styles.sparkWrap}>
-              <Svg width="100%" height="100%" viewBox="0 0 94 36" preserveAspectRatio="none">
-                <Path d={buildSmoothPath(sparklineValues, 94, 36, 3)} stroke="#8e7cff" strokeWidth={2.2} fill="none" />
+              <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <Path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </Svg>
+              <View style={styles.notificationDot} />
+            </Pressable>
+            <Pressable 
+              onPress={() => navigation.navigate('Profile')}
+              style={[styles.profileButton, { backgroundColor: colors.cardBorder }]}
+            >
+              <View style={[styles.avatarGradient, { backgroundColor: colors.primary, overflow: 'hidden' }]}>
+                {profileData?.profilePic && profileData.profilePic.startsWith('http') ? (
+                  <Image source={{ uri: profileData.profilePic }} style={{ width: '100%', height: '100%' }} />
+                ) : (
+                  <Text style={styles.avatarText}>{profileData?.profilePic || (profileData?.username || displayName).charAt(0).toUpperCase()}</Text>
+                )}
+              </View>
+            </Pressable>
+          </View>
+        </Animated.View>
+
+        <View style={styles.wealthSection}>
+          <Animated.View style={[styles.balanceCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }], backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+            <View style={StyleSheet.absoluteFill}>
+              <Svg height="100%" width="100%" viewBox="0 0 350 220" preserveAspectRatio="none">
+                <Defs>
+                  <LinearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <Stop offset="0%" stopColor={isDark ? "#2D2D44" : "#ffffff"} stopOpacity="1" />
+                    <Stop offset="50%" stopColor={isDark ? "#1C1C2E" : "#f0f2ff"} stopOpacity={1} />
+                    <Stop offset="100%" stopColor={isDark ? "#0F0F1A" : "#e0e4ff"} stopOpacity={1} />
+                  </LinearGradient>
+                </Defs>
+                <Rect width="100%" height="100%" fill="url(#grad)" />
+                <Circle cx="350" cy="0" r="180" fill={isDark ? "rgba(138, 110, 255, 0.05)" : "rgba(110, 87, 255, 0.03)"} />
+                <Circle cx="0" cy="220" r="120" fill={isDark ? "rgba(93, 63, 211, 0.05)" : "rgba(93, 63, 211, 0.03)"} />
               </Svg>
             </View>
-          </View>
+            <View style={styles.balanceContentWrapper}>
+              <View style={styles.balanceHeader}>
+                <Pressable style={[styles.walletSelector, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setIsWalletModalVisible(true)}>
+                  <Text style={[styles.balanceLabel, { color: colors.textMuted }]}>{selectedWallet?.name || 'Total Balance'}</Text>
+                  <Text style={[styles.walletChevron, { color: colors.textMuted }]}>▼</Text>
+                </Pressable>
+                <View style={[styles.trendBadge, { backgroundColor: monthTrend < 0 ? colors.danger + '20' : colors.success + '20' }]}>
+                  <Text style={[styles.trendText, { color: monthTrend < 0 ? colors.danger : colors.success }]}>{monthTrend >= 0 ? '↗' : '↘'} {formatTrendPercent(monthTrend)}</Text>
+                </View>
+              </View>
+              <Text style={[styles.balanceValue, { color: colors.text }]}>{isLoading ? '...' : formatCurrency(totalBalance, true)}</Text>
+            </View>
+            <View style={[styles.cardDivider, { backgroundColor: colors.cardBorder }]} />
+            <View style={styles.statsRow}>
+              <View style={styles.statColumn}>
+                <Text style={[styles.statLabelSmall, { color: colors.textMuted }]}>INCOME</Text>
+                <View style={styles.statValueRow}>
+                  <View style={[styles.miniIndicator, { backgroundColor: colors.success }]} />
+                  <Text style={[styles.statValueSmall, { color: colors.success }]}>{formatCurrency(incomeTotal)}</Text>
+                </View>
+              </View>
+              <View style={styles.statColumn}>
+                <Text style={[styles.statLabelSmall, { color: colors.textMuted }]}>EXPENSES</Text>
+                <View style={styles.statValueRow}>
+                  <View style={[styles.miniIndicator, { backgroundColor: colors.danger }]} />
+                  <Text style={[styles.statValueSmall, { color: colors.danger }]}>{formatCurrency(expenseTotal)}</Text>
+                </View>
+              </View>
+            </View>
+          </Animated.View>
+
+          {/* Budget Section */}
+          {totalBudget > 0 && (
+            <Animated.View style={[styles.budgetCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }], backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <View style={styles.budgetHeader}>
+                <View>
+                  <Text style={[styles.budgetLabel, { color: colors.textMuted }]}>MONTHLY BUDGET</Text>
+                  <Text style={[styles.budgetValue, { color: colors.text }]}>{formatCurrency(expenseTotal)} / {formatCurrency(totalBudget)}</Text>
+                </View>
+                <View style={[styles.budgetPercentBadge, { backgroundColor: isNearBudget ? colors.danger + '20' : colors.primaryBg }]}>
+                  <Text style={[styles.budgetPercentText, { color: isNearBudget ? colors.danger : colors.primary }]}>{Math.round(budgetProgress)}%</Text>
+                </View>
+              </View>
+              <View style={[styles.progressBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                <View style={[styles.progressFill, { width: `${budgetProgress}%`, backgroundColor: isNearBudget ? colors.danger : colors.primary }]} />
+              </View>
+              <Text style={[styles.budgetRemaining, { color: colors.textMuted }]}>
+                {totalBudget >= expenseTotal ? `${formatCurrency(totalBudget - expenseTotal)} remaining` : `Over budget by ${formatCurrency(expenseTotal - totalBudget)}`}
+              </Text>
+            </Animated.View>
+          )}
         </View>
 
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <View style={[styles.statIconWrap, styles.incomeIconWrap]}>
-              <Text style={styles.statIconText}>v</Text>
-            </View>
-            <Text style={styles.statLabel}>Income</Text>
-            <Text style={styles.statValue}>{formatCurrency(incomeTotal)}</Text>
-            <Text
-              style={[
-                styles.statGrowth,
-                incomeTrend > 0 ? styles.statGrowthPositive : incomeTrend < 0 ? styles.statGrowthNegative : styles.statGrowthNeutral,
-              ]}
-            >
-              {formatTrendPercent(incomeTrend)}
-            </Text>
+        <Animated.View style={[{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Analytics Overview</Text>
+            <Pressable onPress={() => navigation.navigate('Analytics')}><Text style={[styles.seeAll, { color: colors.primary }]}>See Trends</Text></Pressable>
           </View>
-          <View style={styles.statCard}>
-            <View style={[styles.statIconWrap, styles.expenseIconWrap]}>
-              <Text style={styles.statIconText}>^</Text>
-            </View>
-            <Text style={styles.statLabel}>Expenses</Text>
-            <Text style={styles.statValue}>{formatCurrency(expenseTotal)}</Text>
-            <Text
-              style={[
-                styles.statGrowth,
-                expenseTrend > 0 ? styles.statGrowthNegative : expenseTrend < 0 ? styles.statGrowthPositive : styles.statGrowthNeutral,
-              ]}
-            >
-              {formatTrendPercent(expenseTrend)}
-            </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
+            {categories.map((cat, idx) => (
+              <View key={cat.category} style={[styles.categoryCard, { marginLeft: idx === 0 ? 0 : 12, backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+                <View style={styles.categoryCardHeader}>
+                  <View style={[styles.catIconBox, { backgroundColor: colors.primaryBg }]}><Text style={[styles.catEmoji, { color: colors.primary }]}>{cat.category.charAt(0).toUpperCase()}</Text></View>
+                  <Text style={[styles.catPercent, { color: colors.textMuted }]}>{Math.round((cat.amount / (expenseTotal || 1)) * 100)}%</Text>
+                </View>
+                <Text style={[styles.catName, { color: colors.textMuted }]}>{formatCategoryLabel(cat.category)}</Text>
+                <Text style={[styles.catAmount, { color: colors.text }]}>{formatCurrency(cat.amount)}</Text>
+                <View style={[styles.progressBg, { backgroundColor: isDark ? '#0a0c1f' : '#f0f2ff' }]}><View style={[styles.progressFill, { width: `${Math.min(100, (cat.amount / (expenseTotal || 1)) * 100)}%`, backgroundColor: colors.primary }]} /></View>
+              </View>
+            ))}
+          </ScrollView>
+        </Animated.View>
+
+        <Animated.View style={[{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Transactions</Text>
+            <Pressable onPress={() => navigation.navigate('History')}><Text style={[styles.seeAll, { color: colors.primary }]}>History</Text></Pressable>
           </View>
-        </View>
-
-        <View style={styles.recentHead}>
-          <Text style={styles.recentTitle}>Recent Transactions</Text>
-          <Text style={styles.seeAll}>See All</Text>
-        </View>
-
-        {recentTransactions.length === 0 && !isLoading ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No transactions yet</Text>
-            <Text style={styles.emptyBody}>
-              Add a transaction to see the dashboard summary update instantly.
-            </Text>
-          </View>
-        ) : null}
-
-        {recentTransactions.map(tx => (
-          <Pressable
-            key={tx.id}
-            style={styles.transactionCard}
-            onPress={() => {
-              const parentNav = navigation.getParent();
-              if (parentNav) {
-                parentNav.navigate('TransactionDetail', { transaction: tx });
-              }
-            }}
-          >
-            <View style={styles.dotWrap}>
-              <Text style={styles.dotIcon}>{tx.type === 'income' ? '↑' : '↓'}</Text>
+          {isLoading ? (
+            <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
+          ) : (
+            <View style={[styles.txList, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              {recentTransactions.map((tx, idx) => {
+                const catData = getCategoryData(tx.category);
+                return (
+                  <Pressable key={tx.id} style={[styles.txItem, idx === recentTransactions.length - 1 && styles.txItemLast, { borderBottomColor: colors.cardBorder }]} onPress={() => navigation.navigate('TransactionDetail', { transaction: tx })}>
+                    <View style={[styles.txIconWrap, { backgroundColor: catData.color + '20' }]}><Text style={styles.categoryIconText}>{catData.icon}</Text></View>
+                    <View style={styles.txInfo}>
+                      <Text style={[styles.txCategory, { color: colors.text }]}>{catData.label}</Text>
+                      <Text style={[styles.txDate, { color: colors.textMuted }]} numberOfLines={1}>{formatTransactionDate(tx.date)} {tx.note ? `• ${tx.note}` : ''}</Text>
+                    </View>
+                    <Text style={[styles.txAmount, { color: tx.type === 'income' ? colors.success : colors.text }]}>{tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
-            <View style={styles.txTextWrap}>
-              <Text style={styles.txTitle}>{formatCategoryLabel(tx.category)}</Text>
-              <Text style={styles.txSub}>{formatTransactionDate(tx.date)}</Text>
-            </View>
-            <Text style={[styles.txAmount, tx.type === 'income' ? styles.incomeAmount : styles.expenseAmount]}>
-              {formatSignedAmount(tx)}
-            </Text>
-          </Pressable>
-        ))}
+          )}
+        </Animated.View>
       </ScrollView>
+
+      <Modal visible={isWalletModalVisible} transparent animationType="slide" onRequestClose={() => setIsWalletModalVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => { setIsWalletModalVisible(false); setIsAddingWallet(false); }}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContent}>
+            <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]} onPress={e => e.stopPropagation()}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>{isAddingWallet ? 'Create New Wallet' : (isManagingWallets ? 'Manage Wallets' : 'Select Wallet')}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {!isAddingWallet && (
+                    <Pressable onPress={() => setIsManagingWallets(!isManagingWallets)} style={[styles.manageBtn, { backgroundColor: colors.primaryBg }]}>
+                      <Text style={[styles.manageBtnText, { color: colors.primary }]}>{isManagingWallets ? 'Done' : 'Manage'}</Text>
+                    </Pressable>
+                  )}
+                  <Pressable onPress={() => { setIsWalletModalVisible(false); setIsAddingWallet(false); setIsManagingWallets(false); }}><Text style={[styles.modalCloseText, { color: colors.textMuted }]}>✕</Text></Pressable>
+                </View>
+              </View>
+
+              {!isAddingWallet ? (
+                <ScrollView style={styles.walletList} showsVerticalScrollIndicator={false}>
+                  {!isManagingWallets && (
+                    <Pressable 
+                      style={[styles.walletItem, !selectedWallet && styles.walletItemActive, { backgroundColor: !selectedWallet ? colors.primaryBg : colors.background, borderColor: !selectedWallet ? colors.primary : 'transparent' }]}
+                      onPress={() => { setSelectedWalletId(''); setSelectedWallet(null); setIsWalletModalVisible(false); refreshCallback(); }}
+                    >
+                      <View style={[styles.walletIconBox, { backgroundColor: colors.primaryBg }]}><Text style={styles.walletIcon}>🌐</Text></View>
+                      <View style={styles.walletInfo}><Text style={[styles.walletNameText, { color: colors.text }]}>All Wallets</Text><Text style={[styles.walletCreatedText, { color: colors.textMuted }]}>Combined view</Text></View>
+                      {!selectedWallet && <View style={[styles.checkCircle, { backgroundColor: colors.primary }]}><Text style={styles.checkIcon}>✓</Text></View>}
+                    </Pressable>
+                  )}
+                  {wallets.map(wallet => (
+                    <Pressable key={wallet.id} style={[styles.walletItem, selectedWallet?.id === wallet.id && !isManagingWallets && styles.walletItemActive, { backgroundColor: (selectedWallet?.id === wallet.id && !isManagingWallets) ? colors.primaryBg : colors.background, borderColor: (selectedWallet?.id === wallet.id && !isManagingWallets) ? colors.primary : 'transparent' }]} onPress={() => isManagingWallets ? null : handleSelectWallet(wallet)}>
+                      <View style={[styles.walletIconBox, { backgroundColor: wallet.color + '20' }]}><Text style={styles.walletIcon}>{wallet.icon}</Text></View>
+                      <View style={styles.walletInfo}><Text style={[styles.walletNameText, { color: colors.text }]}>{wallet.name}</Text><Text style={[styles.walletCreatedText, { color: colors.textMuted }]}>Created {new Date(wallet.createdAt).toLocaleDateString()}</Text></View>
+                      {isManagingWallets ? (
+                        <Pressable style={[styles.deleteWalletBtn, { backgroundColor: colors.danger + '20' }]} onPress={() => handleDeleteWallet(wallet)}><Text style={styles.deleteWalletIcon}>🗑️</Text></Pressable>
+                      ) : (
+                        selectedWallet?.id === wallet.id && <View style={[styles.checkCircle, { backgroundColor: colors.primary }]}><Text style={styles.checkIcon}>✓</Text></View>
+                      )}
+                    </Pressable>
+                  ))}
+                  <Pressable style={[styles.addWalletBtn, { borderColor: colors.textMuted + '40' }]} onPress={() => setIsAddingWallet(true)}>
+                    <View style={[styles.addWalletIconBox, { backgroundColor: colors.primaryBg }]}><Text style={[styles.addWalletIcon, { color: colors.primary }]}>+</Text></View>
+                    <Text style={[styles.addWalletText, { color: colors.primary }]}>Add New Wallet</Text>
+                  </Pressable>
+                </ScrollView>
+              ) : (
+                <View style={styles.addWalletForm}>
+                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Wallet Name</Text>
+                  <TextInput style={[styles.modalInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.cardBorder }]} placeholder="e.g., Savings, Business" placeholderTextColor={colors.textMuted + '60'} value={newWalletName} onChangeText={setNewWalletName} autoFocus />
+                  <View style={styles.modalActionRow}>
+                    <Pressable style={[styles.modalCancelBtn, { backgroundColor: colors.background }]} onPress={() => setIsAddingWallet(false)}><Text style={[styles.modalCancelText, { color: colors.textMuted }]}>Cancel</Text></Pressable>
+                    <Pressable style={[styles.modalSaveBtn, { backgroundColor: colors.primary }, !newWalletName.trim() && { opacity: 0.5 }]} onPress={handleAddWallet} disabled={!newWalletName.trim()}><Text style={styles.modalSaveText}>Create Wallet</Text></Pressable>
+                  </View>
+                </View>
+              )}
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#090a1f',
-  },
-  content: {
-    paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 118,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  avatarWrap: {
-    marginTop: 8,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: '#6d56ff',
-    backgroundColor: '#24274f',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    color: '#f5f7ff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  smallMuted: {
-    color: '#8a90c6',
-    fontSize: 12,
-    marginBottom: 3,
-  },
-  greeting: {
-    color: '#f7f8ff',
-    fontSize: 27,
-    fontWeight: '700',
-  },
-  balanceCard: {
-    position: 'relative',
-    overflow: 'hidden',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#2d3260',
-    backgroundColor: '#1a1d4a',
-    padding: 14,
-    marginBottom: 11,
-  },
-  balanceFadeLeft: {
-    position: 'absolute',
-    left: -30,
-    top: -32,
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    backgroundColor: 'rgba(116, 88, 255, 0.22)',
-  },
-  balanceFadeLeftSoft: {
-    position: 'absolute',
-    left: 44,
-    top: -10,
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    backgroundColor: 'rgba(116, 88, 255, 0.10)',
-  },
-  balanceFadeMiddle: {
-    position: 'absolute',
-    right: 86,
-    top: -6,
-    bottom: -6,
-    width: 120,
-    backgroundColor: 'rgba(55, 35, 136, 0.12)',
-  },
-  balanceFadeRight: {
-    position: 'absolute',
-    right: -18,
-    top: -8,
-    width: 126,
-    height: 126,
-    borderRadius: 63,
-    backgroundColor: 'rgba(96, 116, 255, 0.14)',
-  },
-  balanceLabel: {
-    color: '#c7cae4',
-    fontSize: 12,
-    marginBottom: 2,
-  },
-  balanceValue: {
-    color: '#ffffff',
-    fontSize: 36,
-    fontWeight: '800',
-    marginBottom: 6,
-  },
-  negativeBalance: {
-    color: '#ff7d9a',
-  },
-  loadingIndicator: {
-    marginVertical: 12,
-  },
-  balanceMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  trendPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 14,
-    backgroundColor: '#124939',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  trendText: {
-    color: '#30cf94',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  trendPillNegative: {
-    backgroundColor: '#4a1f2f',
-  },
-  trendPillNeutral: {
-    backgroundColor: '#2b3047',
-  },
-  trendTextNegative: {
-    color: '#ff7d9a',
-  },
-  trendTextNeutral: {
-    color: '#a7afd8',
-  },
-  trendSubText: {
-    color: '#7c85b8',
-    fontSize: 10,
-    marginLeft: 6,
-  },
-  sparkWrap: {
-    width: 94,
-    height: 36,
-    position: 'relative',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  statCard: {
-    width: '48.6%',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#262932',
-    backgroundColor: '#11131a',
-    padding: 12,
-  },
-  statIconWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  incomeIconWrap: {
-    backgroundColor: '#30333b',
-  },
-  expenseIconWrap: {
-    backgroundColor: '#30333b',
-  },
-  statIconText: {
-    color: '#b6bdcf',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  statLabel: {
-    color: '#8c93c8',
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  statValue: {
-    color: '#f5f7ff',
-    fontWeight: '700',
-    fontSize: 33,
-    marginBottom: 3,
-  },
-  statGrowth: {
-    fontWeight: '700',
-    fontSize: 10,
-  },
-  statGrowthPositive: {
-    color: '#1dc98b',
-  },
-  statGrowthNegative: {
-    color: '#ff6e95',
-  },
-  statGrowthNeutral: {
-    color: '#a1a8d6',
-  },
-  recentHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  recentTitle: {
-    color: '#f4f5ff',
-    fontSize: 27,
-    fontWeight: '700',
-  },
-  seeAll: {
-    color: '#7357ff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  transactionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: '#23262f',
-    backgroundColor: '#101219',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 9,
-  },
-  dotWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#2f333d',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  dotIcon: {
-    color: '#cad1e3',
-    fontWeight: '700',
-  },
-  txTextWrap: {
-    flex: 1,
-  },
-  txTitle: {
-    color: '#f4f6ff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  txSub: {
-    color: '#7f85bf',
-    fontSize: 10,
-    marginTop: 2,
-  },
-  txAmount: {
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  incomeAmount: {
-    color: '#1bcd8d',
-  },
-  expenseAmount: {
-    color: '#f5f6ff',
-  },
-  emptyState: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#2a2d6d',
-    backgroundColor: '#111333',
-    padding: 16,
-    marginBottom: 9,
-  },
-  emptyTitle: {
-    color: '#f4f5ff',
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  emptyBody: {
-    color: '#8a90c8',
-    fontSize: 12,
-    lineHeight: 17,
-  },
+  screen: { flex: 1 },
+  content: { paddingHorizontal: 20, paddingTop: 50, paddingBottom: 120 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
+  greetingText: { fontSize: 14, fontWeight: '500', letterSpacing: 0.5 },
+  userName: { fontSize: 26, fontWeight: '800', marginTop: 2 },
+  headerActions: { flexDirection: 'row', alignItems: 'center' },
+  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  notificationDot: { position: 'absolute', top: 12, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: '#ff4d6d', borderWidth: 1.5, borderColor: '#16193b' },
+  profileButton: { width: 44, height: 44, borderRadius: 22, padding: 2 },
+  avatarGradient: { flex: 1, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  wealthSection: { marginBottom: 32 },
+  balanceCard: { height: 220, borderRadius: 24, padding: 24, justifyContent: 'space-between', shadowColor: '#000', shadowOffset: { width: 0, height: 15 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 15, overflow: 'hidden', borderWidth: 1 },
+  balanceContentWrapper: { flex: 1, justifyContent: 'center' },
+  balanceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  walletSelector: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
+  balanceLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase' },
+  walletChevron: { fontSize: 10, marginLeft: 6 },
+  balanceValue: { fontSize: 42, fontWeight: '800', letterSpacing: -0.5 },
+  cardDivider: { height: 1, marginVertical: 18 },
+  statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  statColumn: { flex: 1 },
+  statLabelSmall: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginBottom: 4 },
+  statValueRow: { flexDirection: 'row', alignItems: 'center' },
+  miniIndicator: { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
+  statValueSmall: { fontSize: 16, fontWeight: '700' },
+  trendBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+  trendText: { fontSize: 12, fontWeight: '700' },
+  budgetCard: { marginTop: 16, padding: 20, borderRadius: 24, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 15, elevation: 5 },
+  budgetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  budgetLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
+  budgetValue: { fontSize: 18, fontWeight: '800', marginTop: 4 },
+  budgetPercentBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  budgetPercentText: { fontSize: 12, fontWeight: '800' },
+  budgetRemaining: { fontSize: 12, fontWeight: '600', marginTop: 12 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
+  sectionTitle: { fontSize: 19, fontWeight: '800', letterSpacing: 0.3 },
+  seeAll: { fontSize: 14, fontWeight: '700' },
+  categoryScroll: { marginBottom: 32, marginHorizontal: -20, paddingHorizontal: 20 },
+  categoryCard: { width: 150, borderRadius: 24, padding: 18, borderWidth: 1 },
+  categoryCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  catIconBox: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  catEmoji: { fontSize: 16, fontWeight: '800' },
+  catPercent: { fontSize: 12, fontWeight: '700' },
+  catName: { fontSize: 13, fontWeight: '600' },
+  catAmount: { fontSize: 17, fontWeight: '800', marginTop: 4, marginBottom: 12 },
+  progressBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 3 },
+  txList: { borderRadius: 28, padding: 8, borderWidth: 1 },
+  txItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1 },
+  txItemLast: { borderBottomWidth: 0 },
+  txIconWrap: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  categoryIconText: { fontSize: 20 },
+  txInfo: { flex: 1 },
+  txCategory: { fontSize: 16, fontWeight: '700' },
+  txDate: { fontSize: 12, marginTop: 3, fontWeight: '500' },
+  txAmount: { fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modalContent: { width: '100%' },
+  modalCard: { borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24, borderTopWidth: 1 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitle: { fontSize: 20, fontWeight: '800' },
+  modalCloseText: { fontSize: 18, fontWeight: '300' },
+  manageBtn: { marginRight: 16, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  manageBtnText: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  deleteWalletBtn: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  deleteWalletIcon: { fontSize: 16 },
+  walletList: { maxHeight: 400 },
+  walletItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 20, marginBottom: 12, borderWidth: 1 },
+  walletItemActive: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  walletIconBox: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  walletIcon: { fontSize: 22 },
+  walletInfo: { flex: 1 },
+  walletNameText: { fontSize: 16, fontWeight: '700' },
+  walletCreatedText: { fontSize: 12, marginTop: 2 },
+  checkCircle: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  checkIcon: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  addWalletBtn: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 20, borderWidth: 1, borderStyle: 'dashed', marginTop: 8 },
+  addWalletIconBox: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  addWalletIcon: { fontSize: 24, fontWeight: '300' },
+  addWalletText: { fontSize: 16, fontWeight: '700' },
+  addWalletForm: { paddingBottom: 20 },
+  modalInput: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, marginBottom: 24, borderWidth: 1 },
+  inputLabel: { fontSize: 12, fontWeight: '600', marginBottom: 8, marginLeft: 4, textTransform: 'uppercase', letterSpacing: 1 },
+  modalActionRow: { flexDirection: 'row', gap: 12 },
+  modalCancelBtn: { flex: 1, paddingVertical: 14, alignItems: 'center', borderRadius: 16 },
+  modalCancelText: { fontSize: 16, fontWeight: '600' },
+  modalSaveBtn: { flex: 2, paddingVertical: 14, alignItems: 'center', borderRadius: 16 },
+  modalSaveText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
+
+export default React.memo(Dashboard);

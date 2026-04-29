@@ -95,9 +95,17 @@ const RegisterScreen = ({ navigation }: Props) => {
       }),
     })
       .then(async response => {
-        const responseJson = await response.json();
+        const rawResponse = await response.text();
+        let responseJson: { message?: string } | null = null;
+
+        try {
+          responseJson = rawResponse ? JSON.parse(rawResponse) : null;
+        } catch {
+          responseJson = null;
+        }
+
         if (!response.ok) {
-          throw new Error(responseJson?.message || 'Registration failed');
+          throw new Error(responseJson?.message || rawResponse || 'Registration failed');
         }
         return responseJson;
       })
@@ -127,7 +135,7 @@ const RegisterScreen = ({ navigation }: Props) => {
         <View style={styles.topBar}>
           <View style={styles.brandWrap}>
             <View style={styles.logoSquare}>
-              <Text style={styles.logoText}>$</Text>
+              <Text style={styles.logoText}>👛</Text>
             </View>
             <Text style={styles.brandText}>MIDNIGHT GLASS</Text>
           </View>

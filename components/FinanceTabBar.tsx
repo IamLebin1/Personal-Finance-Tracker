@@ -1,20 +1,25 @@
-import React from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Animated, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, Pressable, StyleSheet, Text, View, LayoutChangeEvent } from 'react-native';
+import Svg, { Circle, Path, Polyline } from 'react-native-svg';
+import { useTheme } from '../context/ThemeContext';
 
 const tabMeta: Record<string, { label: string }> = {
   Dashboard: { label: 'Home' },
   History: { label: 'History' },
-  Analytics: { label: 'Analytics' },
+  Analytics: { label: 'Stats' },
   Profile: { label: 'Profile' },
 };
 
 function TabIcon({ routeName, color }: { routeName: string; color: string }) {
+  const iconSize = 22;
   if (routeName === 'Dashboard') {
     return (
       <View style={styles.iconSlot}>
-        <View style={[styles.homeRoof, { borderBottomColor: color }]} />
-        <View style={[styles.homeBody, { borderColor: color }]} />
+        <Svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+          <Path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          <Path d="M9 22V12h6v10" />
+        </Svg>
       </View>
     );
   }
@@ -22,26 +27,32 @@ function TabIcon({ routeName, color }: { routeName: string; color: string }) {
   if (routeName === 'History') {
     return (
       <View style={styles.iconSlot}>
-        <View style={[styles.historyRing, { borderColor: color }]} />
-        <View style={[styles.historyHead, { borderTopColor: color, borderRightColor: color }]} />
+        <Svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+          <Circle cx="12" cy="12" r="10" />
+          <Polyline points="12 6 12 12 16 14" />
+        </Svg>
       </View>
     );
   }
 
   if (routeName === 'Analytics') {
     return (
-      <View style={[styles.iconSlot, styles.analyticsRow]}>
-        <View style={[styles.bar, styles.barShort, { backgroundColor: color }]} />
-        <View style={[styles.bar, styles.barTall, { backgroundColor: color }]} />
-        <View style={[styles.bar, styles.barMid, { backgroundColor: color }]} />
+      <View style={styles.iconSlot}>
+        <Svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+          <Path d="M18 20V10" />
+          <Path d="M12 20V4" />
+          <Path d="M6 20V14" />
+        </Svg>
       </View>
     );
   }
 
   return (
     <View style={styles.iconSlot}>
-      <View style={[styles.profileHead, { borderColor: color }]} />
-      <View style={[styles.profileBody, { borderColor: color }]} />
+      <Svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+        <Path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <Circle cx="12" cy="7" r="4" />
+      </Svg>
     </View>
   );
 }
@@ -50,48 +61,59 @@ function AnimatedTabButton({
   isFocused,
   label,
   onPress,
-  accessibilityLabel,
   routeName,
+  onLayout,
+  activeColor,
+  inactiveColor,
+  indicatorBg,
 }: {
   isFocused: boolean;
   label: string;
   onPress: () => void;
-  accessibilityLabel?: string;
   routeName: string;
+  onLayout?: (event: LayoutChangeEvent) => void;
+  activeColor: string;
+  inactiveColor: string;
+  indicatorBg: string;
 }) {
-  const scale = React.useRef(new Animated.Value(1)).current;
-  const opacity = React.useRef(new Animated.Value(1)).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
 
-  const animateTo = (nextScale: number, nextOpacity: number) => {
-    Animated.parallel([
-      Animated.spring(scale, {
-        toValue: nextScale,
-        useNativeDriver: true,
-        damping: 16,
-        stiffness: 220,
-        mass: 0.9,
-      }),
-      Animated.timing(opacity, {
-        toValue: nextOpacity,
-        duration: 120,
-        useNativeDriver: true,
-      }),
-    ]).start();
+  useEffect(() => {
+    Animated.spring(translateY, {
+      toValue: isFocused ? -4 : 0,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 100,
+    }).start();
+  }, [isFocused]);
+
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.9,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
   };
 
   return (
     <Pressable
-      accessibilityRole="button"
-      accessibilityState={isFocused ? { selected: true } : {}}
-      accessibilityLabel={accessibilityLabel}
       onPress={onPress}
-      onPressIn={() => animateTo(0.93, 0.88)}
-      onPressOut={() => animateTo(1, 1)}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onLayout={onLayout}
       style={styles.tabButtonShell}
     >
-      <Animated.View style={[styles.tabButton, { transform: [{ scale }], opacity }]}>
-        <TabIcon routeName={routeName} color={isFocused ? '#8f7bff' : '#8c94ab'} />
-        <Text numberOfLines={1} ellipsizeMode="clip" style={[styles.label, isFocused && styles.focusedText]}>
+      <Animated.View style={[styles.tabButton, { transform: [{ scale }, { translateY }] }]}>
+        <View style={[styles.activeIndicatorBg, isFocused && styles.activeIndicatorBgVisible, { backgroundColor: indicatorBg }]} />
+        <TabIcon routeName={routeName} color={isFocused ? activeColor : inactiveColor} />
+        <Text numberOfLines={1} style={[styles.label, { color: isFocused ? activeColor : inactiveColor }]}>
           {label}
         </Text>
       </Animated.View>
@@ -100,16 +122,44 @@ function AnimatedTabButton({
 }
 
 export default function FinanceTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-  const currentRoute = state.routes[state.index]?.name;
+  const { colors, isDark } = useTheme();
+  const [tabLayouts, setTabLayouts] = useState<Record<number, { x: number; width: number }>>({});
+  const indicatorX = useRef(new Animated.Value(0)).current;
+
+  const handleLayout = (index: number, event: LayoutChangeEvent) => {
+    const { x, width } = event.nativeEvent.layout;
+    setTabLayouts(prev => ({ ...prev, [index]: { x, width } }));
+  };
+
+  useEffect(() => {
+    const layout = tabLayouts[state.index];
+    if (layout) {
+      Animated.spring(indicatorX, {
+        toValue: layout.x + layout.width / 2 - 20,
+        useNativeDriver: true,
+        damping: 18,
+        stiffness: 150,
+      }).start();
+    }
+  }, [state.index, tabLayouts]);
 
   return (
     <View style={styles.outerWrap}>
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]}>
+        <Animated.View 
+          style={[
+            styles.slidingLine, 
+            { 
+              backgroundColor: colors.primary,
+              shadowColor: colors.primary,
+              transform: [{ translateX: indicatorX }] 
+            }
+          ]} 
+        />
+        
         {state.routes.map((route, index) => {
-          const insertFabGap = index === 2;
           const isFocused = state.index === index;
           const meta = tabMeta[route.name] ?? { label: route.name };
-          const iconColor = isFocused ? '#8f7bff' : '#8c94ab';
 
           const onPress = () => {
             const event = navigation.emit({
@@ -125,13 +175,16 @@ export default function FinanceTabBar({ state, descriptors, navigation }: Bottom
 
           return (
             <React.Fragment key={route.key}>
-              {insertFabGap ? <View style={styles.fabGap} /> : null}
+              {index === 2 ? <View style={styles.fabGap} /> : null}
               <AnimatedTabButton
                 isFocused={isFocused}
                 label={meta.label}
                 onPress={onPress}
-                accessibilityLabel={descriptors[route.key].options.tabBarAccessibilityLabel}
                 routeName={route.name}
+                onLayout={(e) => handleLayout(index, e)}
+                activeColor={colors.accent}
+                inactiveColor={colors.textMuted}
+                indicatorBg={colors.primaryBg}
               />
             </React.Fragment>
           );
@@ -139,28 +192,25 @@ export default function FinanceTabBar({ state, descriptors, navigation }: Bottom
       </View>
 
       <Pressable
-        style={styles.fab}
+        style={[styles.fab, { backgroundColor: colors.card }]}
         onPress={() => {
           const parentNav = navigation.getParent();
           if (parentNav) {
             const { width, height } = Dimensions.get('window');
-            (parentNav as never as {
-              navigate: (routeName: string, params?: { fromFab?: boolean; originX?: number; originY?: number }) => void;
-            }).navigate(
-              'AddTransaction',
-              {
-                fromFab: true,
-                originX: width / 2,
-                originY: height - 36,
-              },
-            );
+            const fabCenterY = height - (Platform.OS === 'ios' ? 76 : 72);
+            (parentNav as any).navigate('AddTransaction', {
+              fromFab: true,
+              originX: width / 2,
+              originY: fabCenterY,
+              fast: true, // Hint for snappier animation
+            });
           }
         }}
       >
-        <Text style={styles.fabIcon}>+</Text>
+        <View style={[styles.fabInner, { backgroundColor: colors.primary, shadowColor: colors.primary }]}>
+          <Text style={styles.fabIcon}>+</Text>
+        </View>
       </Pressable>
-
-      {currentRoute === 'Dashboard' ? <View style={styles.glowLine} /> : null}
     </View>
   );
 }
@@ -171,155 +221,89 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingBottom: 0,
     alignItems: 'center',
-    backgroundColor: 'transparent',
   },
   tabBar: {
     width: '100%',
-    borderRadius: 0,
-    borderWidth: 1,
-    borderColor: '#232633',
-    backgroundColor: '#101218',
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingTop: 10,
-    paddingBottom: 10,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 28,
+    borderTopWidth: 1,
   },
   tabButtonShell: {
     flex: 1,
-    minWidth: 60,
-    maxWidth: 84,
-    marginHorizontal: 2,
+    alignItems: 'center',
   },
   tabButton: {
-    minHeight: 54,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 4,
+    width: '100%',
+  },
+  activeIndicatorBg: {
+    position: 'absolute',
+    top: -2,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    opacity: 0,
+  },
+  activeIndicatorBgVisible: {
+    opacity: 1,
   },
   fabGap: {
-    width: 78,
-    flexShrink: 0,
+    width: 70,
   },
   iconSlot: {
-    width: 22,
-    height: 20,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
   },
   label: {
-    color: '#8c94ab',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-    width: '100%',
-    includeFontPadding: false,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
-  focusedText: {
-    color: '#8f7bff',
-  },
-  homeRoof: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 7,
-    borderRightWidth: 7,
-    borderBottomWidth: 7,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    marginBottom: -1,
-  },
-  homeBody: {
-    width: 12,
-    height: 8,
-    borderWidth: 1.8,
-    borderTopWidth: 0,
-    borderBottomLeftRadius: 2,
-    borderBottomRightRadius: 2,
-  },
-  historyRing: {
-    width: 14,
-    height: 14,
-    borderWidth: 1.8,
-    borderRadius: 7,
-  },
-  historyHead: {
+  slidingLine: {
     position: 'absolute',
-    width: 5,
-    height: 5,
-    borderTopWidth: 1.8,
-    borderRightWidth: 1.8,
-    transform: [{ rotate: '42deg' }],
-    right: 1,
-    top: 3,
-  },
-  analyticsRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    paddingHorizontal: 1,
-  },
-  bar: {
-    width: 4,
-    borderRadius: 1,
-  },
-  barShort: {
-    height: 9,
-  },
-  barTall: {
-    height: 14,
-  },
-  barMid: {
-    height: 11,
-  },
-  profileHead: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    borderWidth: 1.8,
-    marginBottom: 2,
-  },
-  profileBody: {
-    width: 13,
-    height: 7,
-    borderWidth: 1.8,
-    borderTopLeftRadius: 6,
-    borderTopRightRadius: 6,
-    borderBottomWidth: 0,
+    top: 0,
+    height: 3,
+    width: 40,
+    borderRadius: 3,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 5,
   },
   fab: {
     position: 'absolute',
-    top: -20,
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#6f51ff',
-    borderWidth: 4,
-    borderColor: '#0d0f16',
+    top: -28,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    padding: 5,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#6f51ff',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.8,
-    shadowRadius: 14,
-    elevation: 12,
+  },
+  fabInner: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 8,
   },
   fabIcon: {
     color: '#ffffff',
-    fontSize: 36,
-    marginTop: -1,
-    fontWeight: '400',
-  },
-  glowLine: {
-    position: 'absolute',
-    bottom: 0,
-    left: '7%',
-    width: 58,
-    height: 2,
-    borderRadius: 3,
-    backgroundColor: '#725dff',
+    fontSize: 32,
+    fontWeight: '300',
+    marginTop: -2,
   },
 });

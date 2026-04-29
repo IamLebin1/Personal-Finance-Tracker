@@ -2,9 +2,13 @@ const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const crypto = require('crypto');
+const path = require('path');
+
+console.warn('⚠️ WARNING: tracker.js is deprecated. Please use node db/service.js instead.');
 
 const app = express();
-const DB = 'finance_tracker.sqlite';
+// Use an absolute path so running from a different CWD doesn't create a second empty DB.
+const DB = path.join(__dirname, 'db', 'finance_tracker.sqlite');
 const db = new sqlite3.Database(DB);
 
 app.use(cors());
@@ -37,11 +41,12 @@ db.serialize(() => {
       userId INTEGER NOT NULL,
       accountId INTEGER,
       amount REAL NOT NULL,
-      type TEXT NOT NULL CHECK(type IN ('income', 'expense')),
+      type TEXT NOT NULL CHECK(type IN ('income', 'expense', 'transfer')),
       category TEXT NOT NULL,
       note TEXT DEFAULT '',
       date TEXT NOT NULL,
       createdAt TEXT NOT NULL,
+      receiptUrl TEXT,
       FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (accountId) REFERENCES accounts(id) ON DELETE SET NULL
     )
@@ -120,7 +125,10 @@ function auth(req, res, next) {
   }
 
   db.get('SELECT userId FROM sessions WHERE token = ?', [token], (err, row) => {
-    if (err) return res.status(500).json({ message: 'Database error' });
+    if (err) {
+      console.error('Auth Database Error:', err);
+      return res.status(500).json({ message: err.message || 'Database error', code: err.code });
+    }
     if (!row) return res.status(401).json({ message: 'Invalid session' });
 
     req.userId = row.userId;
@@ -179,9 +187,9 @@ app.post('/api/auth/register', (req, res) => {
   );
 });
 
-app.get('/api/accounts', auth, (req, res) => {
+app.get('/api/wallets', auth, (req, res) => {
   db.all(
-    'SELECT id, name, type, balance, createdAt FROM accounts WHERE userId = ? ORDER BY id ASC',
+    'SELECT id, name, type, balance, createdAt, userId FROM accounts WHERE userId = ? ORDER BY id ASC',
     [req.userId],
     (err, rows) => {
       if (err) return res.status(500).json({ message: 'Database error' });
@@ -190,19 +198,22 @@ app.get('/api/accounts', auth, (req, res) => {
   );
 });
 
-app.post('/api/accounts', auth, (req, res) => {
+app.post('/api/wallets', auth, (req, res) => {
   const { name, type, balance } = req.body || {};
-  if (!name || !type) {
-    return res.status(400).json({ message: 'name and type are required' });
+  const walletType = type || 'cash';
+  const initialBalance = balance || 0;
+
+  if (!name) {
+    return res.status(400).json({ message: 'name is required' });
   }
 
   db.run(
     'INSERT INTO accounts(userId, name, type, balance, createdAt) VALUES (?, ?, ?, ?, ?)',
-    [req.userId, name.trim(), type.trim(), Number(balance || 0), new Date().toISOString()],
+    [req.userId, name.trim(), walletType.trim(), Number(initialBalance), new Date().toISOString()],
     function onInsert(err) {
       if (err) {
         if (String(err.message || '').includes('UNIQUE')) {
-          return res.status(409).json({ message: 'account name already exists' });
+          return res.status(409).json({ message: 'wallet name already exists' });
         }
         return res.status(500).json({ message: 'Database error' });
       }
@@ -210,6 +221,18 @@ app.post('/api/accounts', auth, (req, res) => {
       return res.status(201).json({ id: this.lastID, affected: this.changes });
     }
   );
+});
+
+app.delete('/api/wallets/:id', auth, (req, res) => {
+  const walletId = Number(req.params.id);
+  if (!walletId) {
+    return res.status(400).json({ message: 'valid id is required' });
+  }
+
+  db.run('DELETE FROM accounts WHERE id = ? AND userId = ?', [walletId, req.userId], function onDelete(err) {
+    if (err) return res.status(500).json({ message: 'Database error' });
+    return res.status(200).json({ id: walletId, affected: this.changes });
+  });
 });
 
 app.get('/api/budgets', auth, (req, res) => {
@@ -333,17 +356,31 @@ app.get('/api/transactions', auth, (req, res) => {
 });
 
 app.post('/api/transactions', auth, (req, res) => {
-  const { amount, type, category, note, date, accountId } = req.body || {};
+  const { amount, type, category, note, date, accountId, receiptUrl } = req.body || {};
   if (!amount || !type || !category || !date) {
     return res.status(400).json({ message: 'amount, type, category and date are required' });
   }
 
   db.run(
-    `INSERT INTO transactions(userId, accountId, amount, type, category, note, date, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [req.userId, accountId || null, Number(amount), type, category.trim(), note || '', date, new Date().toISOString()],
+    `INSERT INTO transactions(userId, accountId, amount, type, category, note, date, createdAt, receiptUrl)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      req.userId,
+      accountId || null,
+      Number(amount),
+      type,
+      category.trim(),
+      note || '',
+      date,
+      new Date().toISOString(),
+      receiptUrl || '',
+    ],
     function onInsert(err) {
-      if (err) return res.status(500).json({ message: 'Database error' });
+      if (err) {
+        console.error('Insert Transaction Error:', err);
+        // Return the underlying sqlite message to make debugging easier in dev.
+        return res.status(500).json({ message: err.message || 'Database error', code: err.code });
+      }
       return res.status(201).json({ id: this.lastID, affected: this.changes });
     }
   );
@@ -351,18 +388,21 @@ app.post('/api/transactions', auth, (req, res) => {
 
 app.put('/api/transactions/:id', auth, (req, res) => {
   const txId = Number(req.params.id);
-  const { amount, type, category, note, date, accountId } = req.body || {};
+  const { amount, type, category, note, date, accountId, receiptUrl } = req.body || {};
   if (!txId || !amount || !type || !category || !date) {
     return res.status(400).json({ message: 'valid id, amount, type, category and date are required' });
   }
 
   db.run(
     `UPDATE transactions
-     SET amount = ?, type = ?, category = ?, note = ?, date = ?, accountId = ?
+     SET amount = ?, type = ?, category = ?, note = ?, date = ?, accountId = ?, receiptUrl = ?
      WHERE id = ? AND userId = ?`,
-    [Number(amount), type, category.trim(), note || '', date, accountId || null, txId, req.userId],
+    [Number(amount), type, category.trim(), note || '', date, accountId || null, receiptUrl || '', txId, req.userId],
     function onUpdate(err) {
-      if (err) return res.status(500).json({ message: 'Database error' });
+      if (err) {
+        console.error('Update Transaction Error:', err);
+        return res.status(500).json({ message: 'Database error' });
+      }
       return res.status(200).json({ id: txId, affected: this.changes });
     }
   );
@@ -375,12 +415,15 @@ app.delete('/api/transactions/:id', auth, (req, res) => {
   }
 
   db.run('DELETE FROM transactions WHERE id = ? AND userId = ?', [txId, req.userId], function onDelete(err) {
-    if (err) return res.status(500).json({ message: 'Database error' });
+    if (err) {
+      console.error('Delete Transaction Error:', err);
+      return res.status(500).json({ message: 'Database error' });
+    }
     return res.status(200).json({ id: txId, affected: this.changes });
   });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Finance API running on port ${PORT}`);
 });

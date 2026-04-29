@@ -1,6 +1,8 @@
 import { config } from '../config/appConfig';
 import type { CreateTransactionInput, Transaction } from '../types/transaction';
 import { getAuthSession } from './authSession';
+import { clearTransactionCache } from './transactionService';
+import { syncRecurringTransactions } from './recurringTransactionApi';
 
 type TransactionUpdate = Partial<Omit<Transaction, 'id' | 'userId'>>;
 
@@ -14,6 +16,7 @@ function mapTransactionRow(row: any): Transaction {
     note: row.note ?? '',
     receiptUrl: row.receiptUrl ?? '',
     userId: String(row.userId),
+    walletId: row.walletId ? String(row.walletId) : undefined,
   };
 }
 
@@ -35,14 +38,30 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
   if (!response.ok) {
     const message = payload?.message ?? `Request failed (${response.status})`;
-    throw new Error(message);
+    const err: any = new Error(message);
+    // attach status so callers can react to auth errors (401)
+    err.status = response.status;
+    err.payload = payload;
+    throw err;
   }
 
   return payload as T;
 }
 
-export async function getTransactionsByUser(_userId?: string): Promise<Transaction[]> {
-  const response = await fetch(`${config.apiBaseUrl}/api/transactions`, {
+export async function getTransactionsByUser(_userId?: string, walletId?: string): Promise<Transaction[]> {
+  try {
+    await syncRecurringTransactions();
+    clearTransactionCache();
+  } catch (err) {
+    console.error('Failed to sync recurring transactions:', err);
+  }
+
+  let url = `${config.apiBaseUrl}/api/transactions`;
+  if (walletId) {
+    url += `?walletId=${encodeURIComponent(walletId)}`;
+  }
+
+  const response = await fetch(url, {
     headers: {
       ...getAuthHeaders(),
     },
@@ -66,11 +85,13 @@ export async function insertTransaction(input: CreateTransactionInput): Promise<
       date: input.date,
       note: input.note ?? '',
       receiptUrl: input.receiptUrl ?? '',
+      walletId: input.walletId,
     }),
   });
 
   const payload = await parseResponse<{ id: string }>(response);
   const session = getAuthSession();
+  clearTransactionCache();
 
   return {
     ...input,
@@ -91,6 +112,7 @@ export async function updateTransaction(
     date: updates.date ?? fallback?.date,
     note: updates.note ?? fallback?.note ?? '',
     receiptUrl: updates.receiptUrl ?? fallback?.receiptUrl ?? '',
+    walletId: updates.walletId ?? fallback?.walletId,
   };
 
   if (!next.type || !next.category || !next.date || next.amount <= 0) {
@@ -107,6 +129,7 @@ export async function updateTransaction(
   });
 
   await parseResponse<{ affected: number }>(response);
+  clearTransactionCache();
 
   if (!fallback) {
     return null;
@@ -133,4 +156,5 @@ export async function deleteTransaction(id: string): Promise<void> {
   });
 
   await parseResponse<{ affected: number }>(response);
+  clearTransactionCache();
 }
