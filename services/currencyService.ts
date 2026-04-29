@@ -22,6 +22,7 @@ type AlphaVantageRatePayload = {
 };
 
 const CURRENCY_KEY = '@preferred_currency';
+const CACHED_RATE_KEY = '@cached_usd_myr_rate';
 const DEFAULT_USD_TO_MYR_RATE = 4.7;
 const ALPHA_VANTAGE_API_KEY = 'PDPVJNHOMEBYB4B5';
 const ALPHA_VANTAGE_RATE_URL =
@@ -135,7 +136,7 @@ export async function setPreferredCurrency(code: CurrencyCode): Promise<void> {
 
 async function fetchUsdToMyrRate(): Promise<number | null> {
   try {
-    const response = await fetch(ALPHA_VANTAGE_RATE_URL);
+    const response = await fetch(ALPHA_VANTAGE_RATE_URL, { timeout: 5000 });
     if (!response.ok) {
       return null;
     }
@@ -151,8 +152,16 @@ async function fetchUsdToMyrRate(): Promise<number | null> {
       return null;
     }
 
+    // Cache successful rate
+    try {
+      await AsyncStorage.setItem(CACHED_RATE_KEY, String(rate));
+    } catch (error) {
+      console.error('Failed to cache currency rate', error);
+    }
+
     return rate;
-  } catch {
+  } catch (error) {
+    console.warn('Currency rate fetch failed, will use cached rate:', error);
     return null;
   }
 }
@@ -185,6 +194,19 @@ async function pollRate(): Promise<void> {
       socketConnected: true,
     });
   } else {
+    // Attempt to restore from cache when fetch fails
+    try {
+      const cached = await AsyncStorage.getItem(CACHED_RATE_KEY);
+      if (cached) {
+        const cachedRate = Number(cached);
+        if (Number.isFinite(cachedRate) && cachedRate > 0) {
+          setState({ socketConnected: false }); // Offline mode
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load cached rate', error);
+    }
     setState({ socketConnected: false });
   }
 
@@ -198,6 +220,20 @@ export async function startCurrencyRateFeed(): Promise<void> {
 
   started = true;
   shouldPoll = true;
+
+  // Load cached rate on startup
+  try {
+    const cached = await AsyncStorage.getItem(CACHED_RATE_KEY);
+    if (cached) {
+      const cachedRate = Number(cached);
+      if (Number.isFinite(cachedRate) && cachedRate > 0) {
+        setState({ usdToMyrRate: cachedRate });
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load cached currency rate on startup', error);
+  }
+
   await pollRate();
 }
 

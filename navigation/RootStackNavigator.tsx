@@ -14,6 +14,7 @@ import Notifications from '../screens/Notifications';
 import BudgetScreen from '../screens/BudgetScreen';
 import WalletManagement from '../screens/WalletManagement';
 import OnboardingSetup from '../screens/OnboardingSetup';
+import RecurringTransactions from '../screens/RecurringTransactions';
 import type { Transaction } from '../types/transaction';
 import { loadAuthSession } from '../services/authSession';
 import { hasCompletedOnboarding, setOnboardingCompleted } from '../services/onboardingService';
@@ -32,6 +33,7 @@ export type RootStackParamList = {
   Budget: undefined;
   WalletManagement: undefined;
   OnboardingSetup: undefined;
+  RecurringTransactions: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -147,6 +149,11 @@ export default function RootStackNavigator() {
           name="OnboardingSetup"
           component={OnboardingSetup}
           options={{ headerShown: false, gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="RecurringTransactions"
+          component={RecurringTransactions}
+          options={{ headerShown: false }}
         />
       </Stack.Navigator>
     )
