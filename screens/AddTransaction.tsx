@@ -442,7 +442,11 @@ export default function AddTransaction({ navigation, route }: Props) {
           <View style={[styles.walletModalCard, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]} onStartShouldSetResponder={() => true}>
             <View style={[styles.calculatorHandle, { backgroundColor: colors.textMuted + '40' }]} />
             <Text style={[styles.modalTitle, { color: colors.text }]}>Select Wallet</Text>
-            <ScrollView style={styles.walletList} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={styles.walletList}
+              contentContainerStyle={styles.walletListContent}
+              showsVerticalScrollIndicator={false}
+            >
               {wallets.map(wallet => (
                 <Pressable key={wallet.id} style={[styles.walletItem, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: colors.cardBorder }, selectedWalletId === wallet.id && { backgroundColor: colors.primary + '15', borderColor: colors.primary }]} onPress={() => { setSelectedWalletId(wallet.id); setIsWalletModalVisible(false); }}>
                   <View style={[styles.walletIconBox, { backgroundColor: wallet.color + '20' }]}><Text style={styles.walletIcon}>{wallet.icon}</Text></View>
@@ -581,8 +585,23 @@ const styles = StyleSheet.create({
   calendarTodayText: { fontSize: 15, fontWeight: '800' },
   walletRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
   walletEmoji: { fontSize: 18, marginRight: 8 },
-  walletModalCard: { borderTopLeftRadius: 40, borderTopRightRadius: 40, padding: 24, paddingBottom: 48, borderTopWidth: 1, width: '100%' },
-  walletList: { marginTop: 16, maxHeight: 300 },
+  walletModalCard: {
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+    padding: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 28,
+    borderTopWidth: 1,
+    width: '100%',
+    maxHeight: windowSize.height * 0.72,
+  },
+  walletList: {
+    marginTop: 16,
+    flexGrow: 0,
+    maxHeight: windowSize.height * 0.48,
+  },
+  walletListContent: {
+    paddingBottom: 8,
+  },
   walletItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 20, marginBottom: 12, borderWidth: 1 },
   walletIconBox: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
   walletIcon: { fontSize: 20 },
