@@ -107,6 +107,7 @@ function Dashboard({ navigation }: { navigation: any }) {
   const [isAddingWallet, setIsAddingWallet] = useState(false);
   const [isManagingWallets, setIsManagingWallets] = useState(false);
   const [newWalletName, setNewWalletName] = useState('');
+  const [newWalletAmount, setNewWalletAmount] = useState('');
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -140,13 +141,23 @@ function Dashboard({ navigation }: { navigation: any }) {
         const income = allTransactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);
         const expenses = allTransactions.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0);
         const budgetVal = budgetData.find(b => b.category === 'Total')?.amount || 0;
+        
+        // Calculate balance including initial wallet balance
+        let totalWalletBalance = income - expenses;
+        if (!isAllWallets && currentWallet?.initialBalance) {
+          totalWalletBalance += currentWallet.initialBalance;
+        } else if (isAllWallets) {
+          // For all wallets view, sum initial balances from all wallets
+          const allInitialBalance = fetchedWallets.reduce((sum, w) => sum + (w.initialBalance || 0), 0);
+          totalWalletBalance += allInitialBalance;
+        }
 
         setProfileData(profData);
         setWallets(fetchedWallets);
         setSelectedWallet(currentWallet);
         setIncomeTotal(income);
         setExpenseTotal(expenses);
-        setTotalBalance(income - expenses);
+        setTotalBalance(totalWalletBalance);
         setTotalBudget(budgetVal);
         setRecentTransactions(sortedTransactions.slice(0, 5));
         setCategories(categoryData.slice(0, 4));
@@ -176,12 +187,22 @@ function Dashboard({ navigation }: { navigation: any }) {
   const handleAddWallet = async () => {
     if (!newWalletName.trim()) return;
     try {
-      const wallet = await createWallet({ name: newWalletName.trim() });
+      const initialBalance = newWalletAmount.trim() ? Number(newWalletAmount.replace(/,/g, '')) : 0;
+      if (Number.isNaN(initialBalance) || initialBalance < 0) {
+        Alert.alert('Invalid amount', 'Please enter a valid amount.');
+        return;
+      }
+      const wallet = await createWallet({ name: newWalletName.trim(), initialBalance });
       setWallets(prev => [...prev, wallet]);
       setNewWalletName('');
+      setNewWalletAmount('');
       setIsAddingWallet(false);
+      refreshCallback();
       handleSelectWallet(wallet);
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+      Alert.alert('Error', 'Could not create wallet. Try again.');
+      console.error(err);
+    }
   };
 
   const handleDeleteWallet = async (wallet: Wallet) => {
@@ -421,8 +442,10 @@ function Dashboard({ navigation }: { navigation: any }) {
                 <View style={styles.addWalletForm}>
                   <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Wallet Name</Text>
                   <TextInput style={[styles.modalInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.cardBorder }]} placeholder="e.g., Savings, Business" placeholderTextColor={colors.textMuted + '60'} value={newWalletName} onChangeText={setNewWalletName} autoFocus />
+                  <Text style={[styles.inputLabel, { color: colors.textMuted, marginTop: 16 }]}>Initial Balance (Optional)</Text>
+                  <TextInput style={[styles.modalInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.cardBorder }]} placeholder="0" placeholderTextColor={colors.textMuted + '60'} value={newWalletAmount} onChangeText={setNewWalletAmount} keyboardType="decimal-pad" />
                   <View style={styles.modalActionRow}>
-                    <Pressable style={[styles.modalCancelBtn, { backgroundColor: colors.background }]} onPress={() => setIsAddingWallet(false)}><Text style={[styles.modalCancelText, { color: colors.textMuted }]}>Cancel</Text></Pressable>
+                    <Pressable style={[styles.modalCancelBtn, { backgroundColor: colors.background }]} onPress={() => { setIsAddingWallet(false); setNewWalletAmount(''); }}><Text style={[styles.modalCancelText, { color: colors.textMuted }]}>Cancel</Text></Pressable>
                     <Pressable style={[styles.modalSaveBtn, { backgroundColor: colors.primary }, !newWalletName.trim() && { opacity: 0.5 }]} onPress={handleAddWallet} disabled={!newWalletName.trim()}><Text style={styles.modalSaveText}>Create Wallet</Text></Pressable>
                   </View>
                 </View>

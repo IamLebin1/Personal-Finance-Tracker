@@ -12,6 +12,7 @@ import ProfileDetails from '../screens/ProfileDetails';
 import SecuritySettings from '../screens/SecuritySettings';
 import Notifications from '../screens/Notifications';
 import BudgetScreen from '../screens/BudgetScreen';
+import WalletManagement from '../screens/WalletManagement';
 import OnboardingSetup from '../screens/OnboardingSetup';
 import type { Transaction } from '../types/transaction';
 import { loadAuthSession } from '../services/authSession';
@@ -29,6 +30,7 @@ export type RootStackParamList = {
   SecuritySettings: undefined;
   Notifications: undefined;
   Budget: undefined;
+  WalletManagement: undefined;
   OnboardingSetup: undefined;
 };
 
@@ -134,6 +136,11 @@ export default function RootStackNavigator() {
         <Stack.Screen
           name="Budget"
           component={BudgetScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="WalletManagement"
+          component={WalletManagement}
           options={{ headerShown: false }}
         />
         <Stack.Screen

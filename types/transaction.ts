@@ -6,6 +6,7 @@ export interface Wallet {
   userId: string;
   color: string;
   icon: string;
+  initialBalance?: number;
   createdAt: string;
 }
 

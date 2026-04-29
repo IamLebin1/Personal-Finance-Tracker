@@ -15,7 +15,6 @@ import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { setPreferredCurrency, type CurrencyCode, convertToUsd, getCurrencyState } from '../services/currencyService';
 import { createWallet } from '../services/walletApi';
 import { setSelectedWalletId } from '../services/walletService';
-import { insertTransaction } from '../services/transactionApi';
 import { getAuthSession, loadAuthSession } from '../services/authSession';
 import { setOnboardingCompleted } from '../services/onboardingService';
 
@@ -68,27 +67,15 @@ export default function OnboardingSetup({ navigation }: Props) {
     try {
       await setPreferredCurrency(currency);
 
+      // Convert from selected currency to USD for storage
+      const amountInUsd = parsedWorth > 0 ? convertToUsd(parsedWorth, currency) : 0;
+
       const wallet = await createWallet({
         name: safeWalletName,
+        initialBalance: amountInUsd,
       });
 
       await setSelectedWalletId(String(wallet.id));
-
-      if (parsedWorth > 0) {
-        // Convert from selected currency to USD for storage
-        const amountInUsd = convertToUsd(parsedWorth, currency);
-        
-        await insertTransaction({
-          amount: amountInUsd,
-          type: 'income',
-          category: 'Initial Balance',
-          date: new Date().toISOString(),
-          note: 'Initial wallet setup',
-          userId,
-          walletId: String(wallet.id),
-        });
-      }
-
       await setOnboardingCompleted(userId, true);
       navigation.replace('MainTabs');
     } catch (error) {

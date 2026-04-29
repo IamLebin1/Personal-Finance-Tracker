@@ -196,6 +196,7 @@ function Profile() {
   ], []);
 
   const generalRows = useMemo(() => [
+    { id: 'wallets', icon: '👛', title: 'Wallets', subtitle: 'Manage your wallets' },
     { id: 'budget', icon: '📊', title: 'Monthly Budget', subtitle: 'Set your spending limits' },
     { id: 'recurring', icon: '⏰', title: 'Recurring Bills', subtitle: 'Rent, subscriptions, paychecks' },
     { id: 'notifications', icon: '🔔', title: 'Notifications', subtitle: 'Alerts, Reminders' },
@@ -210,6 +211,7 @@ function Profile() {
   const handleRowPress = (item: any) => {
     if (item.id === 'details') navigation.navigate('ProfileDetails' as never);
     else if (item.id === 'security') navigation.navigate('SecuritySettings' as never);
+    else if (item.id === 'wallets') navigation.navigate('WalletManagement' as never);
     else if (item.id === 'budget') navigation.navigate('Budget' as never);
     else if (item.id === 'recurring') navigation.navigate('RecurringTransactions' as never);
     else if (item.id === 'currency') setIsCurrencyModalVisible(true);

@@ -47,7 +47,7 @@ export async function getWallets(): Promise<Wallet[]> {
   return parseResponse<Wallet[]>(response);
 }
 
-export async function createWallet(input: { name: string; color?: string; icon?: string }): Promise<Wallet> {
+export async function createWallet(input: { name: string; color?: string; icon?: string; initialBalance?: number }): Promise<Wallet> {
   // Ensure session is loaded before making the request
   const session = await getValidSession();
   if (!session?.userId) {
@@ -71,6 +71,7 @@ export async function createWallet(input: { name: string; color?: string; icon?:
     userId: String(session.userId),
     color: input.color || '#6e57ff',
     icon: input.icon || '👛',
+    initialBalance: input.initialBalance || 0,
     createdAt: new Date().toISOString(),
   };
 }

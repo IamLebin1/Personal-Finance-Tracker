@@ -390,6 +390,7 @@ function ensureTables(onDone) {
         name TEXT NOT NULL,
         color TEXT,
         icon TEXT,
+        initialBalance REAL DEFAULT 0,
         createdAt TEXT NOT NULL,
         FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
       )
@@ -692,13 +693,15 @@ app.get('/api/wallets', requireAuth, (req, res) => {
 });
 
 app.post('/api/wallets', requireAuth, (req, res) => {
-  const { name, color, icon } = req.body || {};
+  const { name, color, icon, initialBalance } = req.body || {};
   if (!name) return res.status(400).json({ message: 'Wallet name is required' });
+
+  const balance = typeof initialBalance === 'number' && initialBalance >= 0 ? initialBalance : 0;
 
   const db = openDb();
   db.run(
-    'INSERT INTO wallets(userId, name, color, icon, createdAt) VALUES (?, ?, ?, ?, ?)',
-    [req.auth.userId, name, color || '#6e57ff', icon || '👛', new Date().toISOString()],
+    'INSERT INTO wallets(userId, name, color, icon, initialBalance, createdAt) VALUES (?, ?, ?, ?, ?, ?)',
+    [req.auth.userId, name, color || '#6e57ff', icon || '👛', balance, new Date().toISOString()],
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
