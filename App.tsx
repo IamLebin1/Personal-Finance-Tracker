@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RootStackNavigator from './navigation/RootStackNavigator';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { loadCurrencyPreference, startCurrencyRateFeed, stopCurrencyRateFeed } from './services/currencyService';
+import socketService from './services/socketService';
 
 function AppContent() {
   const { isDark, colors } = useTheme();
@@ -44,8 +45,14 @@ function App() {
     void loadCurrencyPreference();
     void startCurrencyRateFeed();
 
+    // Initialize WebSocket connection
+    void socketService.connect().catch((error) => {
+      console.warn('Failed to connect to WebSocket:', error);
+    });
+
     return () => {
       stopCurrencyRateFeed();
+      socketService.disconnect();
     };
   }, []);
 

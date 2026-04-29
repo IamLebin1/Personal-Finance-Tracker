@@ -30,6 +30,8 @@ import { getCategoryData } from '../constants/categories';
 import { useTheme } from '../context/ThemeContext';
 import { getBudgets } from '../services/budgetApi';
 import { config } from '../config/appConfig';
+import { useNotifications } from '../services/useNotifications';
+import socketService from '../services/socketService';
 
 const { width } = Dimensions.get('window');
 
@@ -89,6 +91,7 @@ function formatCategoryLabel(category: string): string {
 
 function Dashboard({ navigation }: { navigation: any }) {
   const { colors, isDark } = useTheme();
+  const { notifications, isConnected } = useNotifications();
   
   const [totalBalance, setTotalBalance] = useState(0);
   const [incomeTotal, setIncomeTotal] = useState(0);
@@ -237,6 +240,22 @@ function Dashboard({ navigation }: { navigation: any }) {
 
   useFocusEffect(refreshCallback);
 
+  // Send budget checks to WebSocket when budgets are loaded
+  useEffect(() => {
+    if (isConnected && session?.userId) {
+      categories.forEach((cat) => {
+        const spent = cat.amount;
+        // Get budget for this category - using a default budget if not set
+        socketService.checkBudget(
+          session.userId,
+          cat.category,
+          spent,
+          cat.amount * 2 // Assume budget is 2x the typical spending (you can customize this)
+        );
+      });
+    }
+  }, [isConnected, categories, session?.userId]);
+
   const session = getAuthSession();
   const displayName = session?.username?.trim() || 'User';
 
@@ -277,6 +296,34 @@ function Dashboard({ navigation }: { navigation: any }) {
             </Pressable>
           </View>
         </Animated.View>
+
+        {/* WebSocket Connection Status and Notifications */}
+        {!isConnected && (
+          <View style={[styles.notificationBar, { backgroundColor: colors.warning }]}>
+            <Text style={styles.notificationText}>📡 Reconnecting...</Text>
+          </View>
+        )}
+
+        {/* Real-time Notification Display */}
+        {notifications.map((notification) => (
+          <View
+            key={notification.id}
+            style={[
+              styles.notificationBanner,
+              {
+                backgroundColor: notification.type === 'budget_alert' ? colors.danger + '20' : colors.success + '20',
+                borderLeftColor: notification.type === 'budget_alert' ? colors.danger : colors.success,
+              },
+            ]}
+          >
+            <Text style={[styles.notificationTitle, { color: colors.text }]}>
+              {notification.type === 'budget_alert' ? '⚠️ ' : '✓ '}{notification.title}
+            </Text>
+            <Text style={[styles.notificationMessage, { color: colors.textMuted }]}>
+              {notification.message}
+            </Text>
+          </View>
+        ))}
 
         <View style={styles.wealthSection}>
           <Animated.View style={[styles.balanceCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }], backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -548,6 +595,11 @@ const styles = StyleSheet.create({
   modalCancelText: { fontSize: 16, fontWeight: '600' },
   modalSaveBtn: { flex: 2, paddingVertical: 14, alignItems: 'center', borderRadius: 16 },
   modalSaveText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  notificationBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, marginBottom: 12 },
+  notificationText: { fontSize: 14, fontWeight: '600' },
+  notificationBanner: { borderLeftWidth: 4, borderRadius: 12, padding: 14, marginBottom: 12, overflow: 'hidden' },
+  notificationTitle: { fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  notificationMessage: { fontSize: 12, fontWeight: '500' },
 });
 
 export default React.memo(Dashboard);

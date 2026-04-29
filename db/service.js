@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const crypto = require('crypto');
+const http = require('http');
+const { Server } = require('socket.io');
 
 const path = require('path');
 const app = express();
@@ -573,9 +575,62 @@ function seedTransactions(onDone) {
 
 function startServer() {
   const PORT = process.env.PORT || 5001;
-  const server = app.listen(PORT, '0.0.0.0', () => {
+  const server = http.createServer(app);
+  const io = new Server(server, {
+    cors: { origin: '*', methods: ['GET', 'POST'] }
+  });
+
+  // Socket.IO namespace for finance notifications
+  const finance = io.of('/finance');
+
+  finance.on('connection', (socket) => {
+    console.log(`[Socket] User connected: ${socket.id}`);
+
+    // Receive user login event
+    socket.on('user_login', (data) => {
+      const userId = data.userId;
+      // Join user to their own room for private notifications
+      socket.join(`user_${userId}`);
+      console.log(`[Socket] User ${userId} joined room`);
+    });
+
+    // Listen for budget check requests
+    socket.on('check_budget', (data) => {
+      const { userId, category, spent, limit } = data;
+      const percentUsed = (spent / limit) * 100;
+      
+      if (percentUsed >= 90) {
+        // Emit budget alert back to specific user
+        finance.to(`user_${userId}`).emit('budget_alert', {
+          category,
+          spent: Math.round(spent * 100) / 100,
+          limit: Math.round(limit * 100) / 100,
+          percentUsed: Math.round(percentUsed),
+          message: `You have used ${Math.round(percentUsed)}% of your ${category} budget`
+        });
+      }
+    });
+
+    // Listen for recurring transaction sync
+    socket.on('sync_recurring', (data) => {
+      const { userId, syncedCount } = data;
+      finance.to(`user_${userId}`).emit('recurring_synced', {
+        syncedCount,
+        message: `${syncedCount} recurring transactions processed`,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Handle disconnection
+    socket.on('disconnect', () => {
+      console.log(`[Socket] User disconnected: ${socket.id}`);
+    });
+  });
+
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Database: ${DB}`);
+    console.log('✓ WebSocket listening on /finance namespace');
     console.log('✓ Backend ready for connections');
   });
   
