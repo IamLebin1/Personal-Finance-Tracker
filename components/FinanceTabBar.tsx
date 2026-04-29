@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Animated, Dimensions, Pressable, StyleSheet, Text, View, LayoutChangeEvent } from 'react-native';
+import { Animated, Dimensions, Pressable, StyleSheet, Text, View, LayoutChangeEvent, Platform } from 'react-native';
 import Svg, { Circle, Path, Polyline } from 'react-native-svg';
 import { useTheme } from '../context/ThemeContext';
 
@@ -121,7 +120,7 @@ function AnimatedTabButton({
   );
 }
 
-export default function FinanceTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export default function FinanceTabBar({ state, descriptors, navigation }: any) {
   const { colors, isDark } = useTheme();
   const [tabLayouts, setTabLayouts] = useState<Record<number, { x: number; width: number }>>({});
   const indicatorX = useRef(new Animated.Value(0)).current;
@@ -157,7 +156,7 @@ export default function FinanceTabBar({ state, descriptors, navigation }: Bottom
           ]} 
         />
         
-        {state.routes.map((route, index) => {
+        {state.routes.map((route: any, index: number) => {
           const isFocused = state.index === index;
           const meta = tabMeta[route.name] ?? { label: route.name };
 

@@ -15,6 +15,7 @@ import BudgetScreen from '../screens/BudgetScreen';
 import WalletManagement from '../screens/WalletManagement';
 import OnboardingSetup from '../screens/OnboardingSetup';
 import RecurringTransactions from '../screens/RecurringTransactions';
+import CategoryManagement from '../screens/CategoryManagement';
 import type { Transaction } from '../types/transaction';
 import { loadAuthSession } from '../services/authSession';
 import { hasCompletedOnboarding, setOnboardingCompleted } from '../services/onboardingService';
@@ -32,6 +33,7 @@ export type RootStackParamList = {
   Notifications: undefined;
   Budget: undefined;
   WalletManagement: undefined;
+  CategoryManagement: undefined;
   OnboardingSetup: undefined;
   RecurringTransactions: undefined;
 };
@@ -143,6 +145,11 @@ export default function RootStackNavigator() {
         <Stack.Screen
           name="WalletManagement"
           component={WalletManagement}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="CategoryManagement"
+          component={CategoryManagement}
           options={{ headerShown: false }}
         />
         <Stack.Screen

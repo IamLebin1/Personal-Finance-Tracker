@@ -227,6 +227,46 @@ function ensureRecurringTransactionsColumns(db, onDone) {
   });
 }
 
+function ensureWalletColumns(db, onDone) {
+  db.all('PRAGMA table_info(wallets)', [], (err, rows) => {
+    if (err) {
+      console.error(err.message);
+      if (typeof onDone === 'function') {
+        onDone();
+      }
+      return;
+    }
+
+    const existingColumns = new Set((rows || []).map(column => column.name));
+    const alterStatements = [];
+
+    if (!existingColumns.has('initialBalance')) {
+      alterStatements.push('ALTER TABLE wallets ADD COLUMN initialBalance REAL DEFAULT 0');
+    }
+
+    if (alterStatements.length === 0) {
+      if (typeof onDone === 'function') {
+        onDone();
+      }
+      return;
+    }
+
+    let pending = alterStatements.length;
+    alterStatements.forEach(sql => {
+      db.run(sql, alterErr => {
+        if (alterErr) {
+          console.error(`Error altering table: ${sql}`, alterErr.message);
+        }
+
+        pending -= 1;
+        if (pending === 0 && typeof onDone === 'function') {
+          onDone();
+        }
+      });
+    });
+  });
+}
+
 function syncRecurringTransactionsForUser(db, userId, onDone) {
   db.all(
     `SELECT *
@@ -511,6 +551,7 @@ function ensureTables(onDone) {
 
     ensureTransactionColumns(db, () => {
       ensureRecurringTransactionsColumns(db, () => {
+        ensureWalletColumns(db, () => {
         db.run(`
           CREATE INDEX IF NOT EXISTS idx_transactions_wallet
           ON transactions(walletId)
@@ -576,6 +617,7 @@ function ensureTables(onDone) {
         });
       }
     });
+      });
   });
 });
 }
@@ -817,13 +859,15 @@ app.post('/api/wallets', requireAuth, (req, res) => {
 });
 
 app.put('/api/wallets/:id', requireAuth, (req, res) => {
-  const { name, color, icon } = req.body || {};
+  const { name, color, icon, initialBalance } = req.body || {};
   if (!name) return res.status(400).json({ message: 'Wallet name is required' });
+
+  const balance = typeof initialBalance === 'number' && initialBalance >= 0 ? initialBalance : 0;
 
   const db = openDb();
   db.run(
-    'UPDATE wallets SET name = ?, color = ?, icon = ? WHERE id = ? AND userId = ?',
-    [name, color, icon, req.params.id, req.auth.userId],
+    'UPDATE wallets SET name = ?, color = ?, icon = ?, initialBalance = ? WHERE id = ? AND userId = ?',
+    [name, color, icon, balance, req.params.id, req.auth.userId],
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });

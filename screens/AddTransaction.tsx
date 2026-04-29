@@ -22,9 +22,10 @@ import { getAuthSession } from '../services/authSession';
 import { getWallets } from '../services/walletApi';
 import { getSelectedWalletId } from '../services/walletService';
 import type { TransactionType, Wallet } from '../types/transaction';
-import { CATEGORIES } from '../constants/categories';
+import { getCategoriesByType, type Category } from '../constants/categories';
 import { useTheme } from '../context/ThemeContext';
 import { useCurrency } from '../services/useCurrency';
+import { getCategories } from '../services/categoryService';
 
 async function uploadReceiptToCloud(fileUri: string): Promise<string> {
   return Promise.resolve(fileUri);
@@ -116,8 +117,9 @@ export default function AddTransaction({ navigation, route }: Props) {
   // 1. Hooks
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0].key);
+  const [selectedCategory, setSelectedCategory] = useState(getCategoriesByType('expense')[0].key);
   const [transactionType, setTransactionType] = useState<TransactionType>('expense');
+  const [availableCategories, setAvailableCategories] = useState<Category[]>(getCategoriesByType('expense'));
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
   const [isWalletModalVisible, setIsWalletModalVisible] = useState(false);
@@ -323,6 +325,35 @@ export default function AddTransaction({ navigation, route }: Props) {
   }, [transactionType, tabAnim]);
 
   useEffect(() => {
+    let isMounted = true;
+
+    const loadAvailableCategories = async () => {
+      const type = transactionType === 'income' ? 'income' : 'expense';
+      const rows = await getCategories(type);
+      if (!isMounted) return;
+      setAvailableCategories(rows);
+
+      if (rows.length > 0) {
+        setSelectedCategory(prev => (rows.some(item => item.key === prev) ? prev : rows[0].key));
+      }
+    };
+
+    loadAvailableCategories().catch(() => {
+      const fallbackType = transactionType === 'income' ? 'income' : 'expense';
+      const fallbackRows = getCategoriesByType(fallbackType);
+      if (!isMounted) return;
+      setAvailableCategories(fallbackRows);
+      if (fallbackRows.length > 0) {
+        setSelectedCategory(prev => (fallbackRows.some(item => item.key === prev) ? prev : fallbackRows[0].key));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [transactionType]);
+
+  useEffect(() => {
     if (fromFab) {
       Animated.parallel([
         Animated.timing(burstScale, { toValue: spreadScaleTarget, duration: 400, useNativeDriver: true }),
@@ -383,7 +414,7 @@ export default function AddTransaction({ navigation, route }: Props) {
 
           <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>Select Category</Text>
           <View style={styles.categoryWrap}>
-            {CATEGORIES.map(item => (
+            {availableCategories.map(item => (
               <Pressable key={item.key} style={[styles.categoryChip, { backgroundColor: colors.card, borderColor: colors.cardBorder }, selectedCategory === item.key && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => setSelectedCategory(item.key)}>
                 <Text style={styles.categoryIcon}>{item.icon}</Text>
                 <Text style={[styles.categoryChipText, { color: selectedCategory === item.key ? '#fff' : colors.textMuted }]}>{item.label}</Text>
