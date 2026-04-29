@@ -466,8 +466,8 @@ function ensureTables(onDone) {
           CREATE INDEX IF NOT EXISTS idx_recurring_transactions_user_next
           ON recurring_transactions(userId, isActive, nextRunDate)
         `);
-      // Seed default wallet for each user if not exists
-      db.all('SELECT id FROM users', [], (userErr, userRows) => {
+        // Seed default wallet for each user if not exists
+        db.all('SELECT id FROM users', [], (userErr, userRows) => {
         if (!userErr && userRows && userRows.length > 0) {
           let userPending = userRows.length;
           userRows.forEach(user => {
@@ -487,8 +487,7 @@ function ensureTables(onDone) {
                   }
                 );
               } else {
-            });
-            });
+                userPending -= 1;
                 if (userPending === 0) finish();
               }
             });
@@ -525,6 +524,7 @@ function ensureTables(onDone) {
       }
     });
   });
+});
 }
 
 function seedTransactions(onDone) {
