@@ -82,6 +82,9 @@ function ensureTransactionColumns(db, onDone) {
     if (!existingColumns.has('walletId')) {
       alterStatements.push("ALTER TABLE transactions ADD COLUMN walletId INTEGER REFERENCES wallets(id) ON DELETE SET NULL");
     }
+    if (!existingColumns.has('recurringTransactionId')) {
+      alterStatements.push("ALTER TABLE transactions ADD COLUMN recurringTransactionId INTEGER REFERENCES recurring_transactions(id) ON DELETE SET NULL");
+    }
 
     if (alterStatements.length === 0) {
       if (typeof onDone === 'function') {
@@ -104,6 +107,199 @@ function ensureTransactionColumns(db, onDone) {
       });
     });
   });
+}
+
+function isValidRecurringFrequency(frequency) {
+  return ['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'].includes(String(frequency || '').toLowerCase());
+}
+
+function addRecurringInterval(dateValue, frequency, intervalCount = 1) {
+  const nextDate = new Date(dateValue);
+  const normalizedFrequency = String(frequency || '').toLowerCase();
+  const steps = Math.max(1, Number(intervalCount) || 1);
+
+  if (normalizedFrequency === 'weekly') {
+    nextDate.setDate(nextDate.getDate() + (7 * steps));
+  } else if (normalizedFrequency === 'biweekly') {
+    nextDate.setDate(nextDate.getDate() + (14 * steps));
+  } else if (normalizedFrequency === 'monthly') {
+    nextDate.setMonth(nextDate.getMonth() + steps);
+  } else if (normalizedFrequency === 'quarterly') {
+    nextDate.setMonth(nextDate.getMonth() + (3 * steps));
+  } else if (normalizedFrequency === 'yearly') {
+    nextDate.setFullYear(nextDate.getFullYear() + steps);
+  }
+
+  return nextDate;
+}
+
+function ensureRecurringTransactionsColumns(db, onDone) {
+  db.all('PRAGMA table_info(recurring_transactions)', [], (err, rows) => {
+    if (err) {
+      console.error(err.message);
+      if (typeof onDone === 'function') {
+        onDone();
+      }
+      return;
+    }
+
+    const existingColumns = new Set((rows || []).map(column => column.name));
+    const alterStatements = [];
+
+    if (!existingColumns.has('walletId')) {
+      alterStatements.push('ALTER TABLE recurring_transactions ADD COLUMN walletId INTEGER REFERENCES wallets(id) ON DELETE SET NULL');
+    }
+    if (!existingColumns.has('endDate')) {
+      alterStatements.push('ALTER TABLE recurring_transactions ADD COLUMN endDate TEXT');
+    }
+
+    if (alterStatements.length === 0) {
+      if (typeof onDone === 'function') {
+        onDone();
+      }
+      return;
+    }
+
+    let pending = alterStatements.length;
+    alterStatements.forEach(sql => {
+      db.run(sql, alterErr => {
+        if (alterErr) {
+          console.error(`Error altering table: ${sql}`, alterErr.message);
+        }
+
+        pending -= 1;
+        if (pending === 0 && typeof onDone === 'function') {
+          onDone();
+        }
+      });
+    });
+  });
+}
+
+function syncRecurringTransactionsForUser(db, userId, onDone) {
+  db.all(
+    `SELECT *
+     FROM recurring_transactions
+     WHERE userId = ? AND isActive = 1
+     ORDER BY nextRunDate ASC`,
+    [userId],
+    (err, schedules) => {
+      if (err) {
+        console.error(err.message);
+        if (typeof onDone === 'function') {
+          onDone(err);
+        }
+        return;
+      }
+
+      if (!schedules || schedules.length === 0) {
+        if (typeof onDone === 'function') {
+          onDone(null, { generated: 0 });
+        }
+        return;
+      }
+
+      const now = new Date();
+      let generated = 0;
+      let pending = schedules.length;
+
+      const finishOne = () => {
+        pending -= 1;
+        if (pending === 0 && typeof onDone === 'function') {
+          onDone(null, { generated });
+        }
+      };
+
+      schedules.forEach(schedule => {
+        const scheduleId = schedule.id;
+        const amount = Number(schedule.amount);
+        const frequency = String(schedule.frequency || '').toLowerCase();
+        const intervalCount = Math.max(1, Number(schedule.intervalCount) || 1);
+        const walletId = schedule.walletId ?? null;
+        const note = schedule.note || '';
+        const category = schedule.category;
+        const type = schedule.type;
+        const nextRunStart = new Date(schedule.nextRunDate);
+        const endDate = schedule.endDate ? new Date(schedule.endDate) : null;
+
+        if (Number.isNaN(nextRunStart.getTime()) || !isValidRecurringFrequency(frequency)) {
+          finishOne();
+          return;
+        }
+
+        const processNextOccurrence = () => {
+          const dueDate = new Date(nextRunStart);
+
+          if (endDate && dueDate > endDate) {
+            db.run(
+              'UPDATE recurring_transactions SET isActive = 0, updatedAt = ? WHERE id = ? AND userId = ?',
+              [new Date().toISOString(), scheduleId, userId],
+              () => finishOne()
+            );
+            return;
+          }
+
+          if (dueDate > now) {
+            db.run(
+              'UPDATE recurring_transactions SET nextRunDate = ?, updatedAt = ? WHERE id = ? AND userId = ?',
+              [dueDate.toISOString(), new Date().toISOString(), scheduleId, userId],
+              () => finishOne()
+            );
+            return;
+          }
+
+          db.run(
+            `INSERT INTO transactions(userId, amount, type, category, note, date, createdAt, receiptUrl, walletId, recurringTransactionId)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              userId,
+              amount,
+              type,
+              category,
+              note,
+              dueDate.toISOString(),
+              new Date().toISOString(),
+              '',
+              walletId,
+              scheduleId,
+            ],
+            insertErr => {
+              if (!insertErr) {
+                generated += 1;
+              } else {
+                console.error('Error creating recurring transaction:', insertErr.message);
+              }
+
+              const nextRun = addRecurringInterval(dueDate, frequency, intervalCount);
+              const shouldDeactivate = endDate && nextRun > endDate;
+
+              db.run(
+                'UPDATE recurring_transactions SET lastRunDate = ?, nextRunDate = ?, isActive = ?, updatedAt = ? WHERE id = ? AND userId = ?',
+                [
+                  dueDate.toISOString(),
+                  nextRun.toISOString(),
+                  shouldDeactivate ? 0 : 1,
+                  new Date().toISOString(),
+                  scheduleId,
+                  userId,
+                ],
+                () => {
+                  nextRunStart.setTime(nextRun.getTime());
+                  if (nextRun <= now && !shouldDeactivate) {
+                    processNextOccurrence();
+                  } else {
+                    finishOne();
+                  }
+                }
+              );
+            }
+          );
+        };
+
+        processNextOccurrence();
+      });
+    }
+  );
 }
 
 
@@ -226,6 +422,30 @@ function ensureTables(onDone) {
         date TEXT NOT NULL,
         createdAt TEXT NOT NULL,
         receiptUrl TEXT,
+        recurringTransactionId INTEGER,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (walletId) REFERENCES wallets(id) ON DELETE SET NULL,
+        FOREIGN KEY (recurringTransactionId) REFERENCES recurring_transactions(id) ON DELETE SET NULL
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS recurring_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
+        walletId INTEGER,
+        amount REAL NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('income', 'expense')),
+        category TEXT NOT NULL,
+        note TEXT DEFAULT '',
+        frequency TEXT NOT NULL CHECK(frequency IN ('weekly', 'biweekly', 'monthly', 'quarterly', 'yearly')),
+        intervalCount INTEGER NOT NULL DEFAULT 1,
+        nextRunDate TEXT NOT NULL,
+        lastRunDate TEXT,
+        endDate TEXT,
+        isActive INTEGER NOT NULL DEFAULT 1,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
         FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (walletId) REFERENCES wallets(id) ON DELETE SET NULL
       )
@@ -237,10 +457,15 @@ function ensureTables(onDone) {
     `);
 
     ensureTransactionColumns(db, () => {
-      db.run(`
-        CREATE INDEX IF NOT EXISTS idx_transactions_wallet
-        ON transactions(walletId)
-      `);
+      ensureRecurringTransactionsColumns(db, () => {
+        db.run(`
+          CREATE INDEX IF NOT EXISTS idx_transactions_wallet
+          ON transactions(walletId)
+        `);
+        db.run(`
+          CREATE INDEX IF NOT EXISTS idx_recurring_transactions_user_next
+          ON recurring_transactions(userId, isActive, nextRunDate)
+        `);
       // Seed default wallet for each user if not exists
       db.all('SELECT id FROM users', [], (userErr, userRows) => {
         if (!userErr && userRows && userRows.length > 0) {
@@ -262,7 +487,8 @@ function ensureTables(onDone) {
                   }
                 );
               } else {
-                userPending -= 1;
+            });
+            });
                 if (userPending === 0) finish();
               }
             });
@@ -567,6 +793,122 @@ app.delete('/api/transactions/:id', requireAuth, (req, res) => {
     closeDb(db);
     if (err) return res.status(500).json({ message: 'Database error' });
     res.status(200).json({ ok: true, affected: this.changes });
+  });
+});
+
+// Recurring Transaction Endpoints
+app.get('/api/recurring-transactions', requireAuth, (req, res) => {
+  const db = openDb();
+  db.all(
+    'SELECT * FROM recurring_transactions WHERE userId = ? ORDER BY nextRunDate ASC',
+    [req.auth.userId],
+    (err, rows) => {
+      closeDb(db);
+      if (err) return res.status(500).json({ message: 'Database error' });
+      res.status(200).json(rows || []);
+    }
+  );
+});
+
+app.post('/api/recurring-transactions', requireAuth, (req, res) => {
+  const { amount, type, category, note, frequency, intervalCount, nextRunDate, endDate, walletId } = req.body || {};
+  if (!amount || !type || !category || !frequency || !nextRunDate) {
+    return res.status(400).json({ message: 'Missing fields' });
+  }
+
+  if (!isValidRecurringFrequency(frequency)) {
+    return res.status(400).json({ message: 'Invalid frequency' });
+  }
+
+  if (!['income', 'expense'].includes(String(type))) {
+    return res.status(400).json({ message: 'Recurring transactions must be income or expense' });
+  }
+
+  const db = openDb();
+  const now = new Date().toISOString();
+  db.run(
+    `INSERT INTO recurring_transactions(userId, walletId, amount, type, category, note, frequency, intervalCount, nextRunDate, endDate, isActive, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+    [
+      req.auth.userId,
+      walletId || null,
+      Number(amount),
+      String(type),
+      category,
+      note || '',
+      String(frequency).toLowerCase(),
+      Math.max(1, Number(intervalCount) || 1),
+      nextRunDate,
+      endDate || null,
+      1,
+      now,
+      now,
+    ],
+    function(err) {
+      closeDb(db);
+      if (err) return res.status(500).json({ message: 'Database error' });
+      res.status(201).json({ id: this.lastID, affected: this.changes });
+    }
+  );
+});
+
+app.put('/api/recurring-transactions/:id', requireAuth, (req, res) => {
+  const { amount, type, category, note, frequency, intervalCount, nextRunDate, endDate, walletId, isActive } = req.body || {};
+  if (!amount || !type || !category || !frequency || !nextRunDate) {
+    return res.status(400).json({ message: 'Missing fields' });
+  }
+
+  if (!isValidRecurringFrequency(frequency)) {
+    return res.status(400).json({ message: 'Invalid frequency' });
+  }
+
+  if (!['income', 'expense'].includes(String(type))) {
+    return res.status(400).json({ message: 'Recurring transactions must be income or expense' });
+  }
+
+  const db = openDb();
+  db.run(
+    `UPDATE recurring_transactions
+     SET amount = ?, type = ?, category = ?, note = ?, frequency = ?, intervalCount = ?, nextRunDate = ?, endDate = ?, walletId = ?, isActive = ?, updatedAt = ?
+     WHERE id = ? AND userId = ?`,
+    [
+      Number(amount),
+      String(type),
+      category,
+      note || '',
+      String(frequency).toLowerCase(),
+      Math.max(1, Number(intervalCount) || 1),
+      nextRunDate,
+      endDate || null,
+      walletId || null,
+      isActive ? 1 : 0,
+      new Date().toISOString(),
+      req.params.id,
+      req.auth.userId,
+    ],
+    function(err) {
+      closeDb(db);
+      if (err) return res.status(500).json({ message: 'Database error' });
+      res.status(200).json({ ok: true, affected: this.changes });
+    }
+  );
+});
+
+app.delete('/api/recurring-transactions/:id', requireAuth, (req, res) => {
+  const db = openDb();
+  db.run('DELETE FROM recurring_transactions WHERE id = ? AND userId = ?', [req.params.id, req.auth.userId], function(err) {
+    closeDb(db);
+    if (err) return res.status(500).json({ message: 'Database error' });
+    res.status(200).json({ ok: true, affected: this.changes });
+  });
+});
+
+app.post('/api/recurring-transactions/sync', requireAuth, (req, res) => {
+  const db = openDb();
+  syncRecurringTransactionsForUser(db, req.auth.userId, (err, result) => {
+    closeDb(db);
+    if (err) return res.status(500).json({ message: 'Database error' });
+    res.status(200).json(result || { generated: 0 });
   });
 });
 
