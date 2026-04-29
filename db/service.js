@@ -632,6 +632,7 @@ function startServer() {
 
   // Socket.IO namespace for finance notifications
   const finance = io.of('/finance');
+  financeNamespace = finance;
 
   finance.on('connection', (socket) => {
     console.log(`[Socket] User connected: ${socket.id}`);
@@ -999,7 +1000,7 @@ app.put('/api/recurring-transactions/:id', requireAuth, (req, res) => {
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
-      emitBudgetAlertsForUser(req.auth.userId, month + '-01');
+      emitBudgetAlertsForUser(req.auth.userId, nextRunDate);
       res.status(200).json({ ok: true, affected: this.changes });
     }
   );
@@ -1084,6 +1085,7 @@ app.post('/api/budgets', requireAuth, (req, res) => {
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
+      emitBudgetAlertsForUser(req.auth.userId, month + '-01');
       res.status(200).json({ ok: true, affected: this.changes });
     }
   );
