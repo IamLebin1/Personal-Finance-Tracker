@@ -135,7 +135,7 @@ function History() {
           </Text>
         </View>
         <View style={styles.txAmountWrap}>
-          <Text style={[styles.txAmount, { color: item.type === 'income' ? colors.success : colors.text }]}>
+          <Text style={[styles.txAmount, { color: item.type === 'income' ? colors.success : colors.text }]} numberOfLines={1} adjustsFontSizeToFit>
             {item.type === 'income' ? '+' : '-'}{formatCurrency(item.amount)}
           </Text>
           {item.note ? <Text numberOfLines={1} style={[styles.txNote, { color: colors.textMuted }]}>{item.note}</Text> : null}
@@ -285,7 +285,7 @@ const styles = StyleSheet.create({
   txCategory: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
   txDate: { fontSize: 12, fontWeight: '500' },
   txAmountWrap: { alignItems: 'flex-end' },
-  txAmount: { fontSize: 16, fontWeight: '800' },
+  txAmount: { fontSize: 16, fontWeight: '800', minFontSize: 10 },
   txNote: { fontSize: 11, marginTop: 4, maxWidth: 100 },
   emptyContainer: { alignItems: 'center', marginTop: 100 },
   emptyIcon: { fontSize: 50, marginBottom: 15 },
