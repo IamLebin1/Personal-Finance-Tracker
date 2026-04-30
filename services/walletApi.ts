@@ -1,6 +1,9 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { config } from '../config/appConfig';
 import { getAuthSession, loadAuthSession } from './authSession';
 import type { Wallet } from '../types/transaction';
+
+const WALLETS_CACHE_KEY = '@finance_tracker_wallets_cache';
 
 async function getValidSession() {
   let session = getAuthSession();
@@ -34,17 +37,47 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
-export async function getWallets(): Promise<Wallet[]> {
-  // Ensure session is loaded before making the request
-  await getValidSession();
-  
-  const response = await fetch(`${config.apiBaseUrl}/api/wallets`, {
-    headers: {
-      ...getAuthHeaders(),
-    },
-  });
+async function cacheWallets(wallets: Wallet[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(WALLETS_CACHE_KEY, JSON.stringify(wallets));
+  } catch {
+    // Ignore cache write errors
+  }
+}
 
-  return parseResponse<Wallet[]>(response);
+async function getCachedWallets(): Promise<Wallet[]> {
+  try {
+    const cached = await AsyncStorage.getItem(WALLETS_CACHE_KEY);
+    return cached ? JSON.parse(cached) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getWallets(): Promise<Wallet[]> {
+  try {
+    // Ensure session is loaded before making the request
+    await getValidSession();
+    
+    const response = await fetch(`${config.apiBaseUrl}/api/wallets`, {
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+
+    const wallets = await parseResponse<Wallet[]>(response);
+    // Cache the fetched wallets for offline use
+    await cacheWallets(wallets);
+    return wallets;
+  } catch (error) {
+    // If API call fails, try to return cached wallets
+    const cachedWallets = await getCachedWallets();
+    if (cachedWallets.length > 0) {
+      return cachedWallets;
+    }
+    // If no cache available, rethrow the error
+    throw error;
+  }
 }
 
 export async function createWallet(input: { name: string; color?: string; icon?: string; initialBalance?: number }): Promise<Wallet> {
@@ -65,7 +98,7 @@ export async function createWallet(input: { name: string; color?: string; icon?:
 
   const payload = await parseResponse<{ id: number | string }>(response);
 
-  return {
+  const newWallet: Wallet = {
     id: String(payload.id),
     name: input.name,
     userId: String(session.userId),
@@ -74,6 +107,12 @@ export async function createWallet(input: { name: string; color?: string; icon?:
     initialBalance: input.initialBalance || 0,
     createdAt: new Date().toISOString(),
   };
+
+  // Update cache with new wallet
+  const cachedWallets = await getCachedWallets();
+  await cacheWallets([...cachedWallets, newWallet]);
+
+  return newWallet;
 }
 
 export async function updateWallet(id: string, input: { name: string; color?: string; icon?: string; initialBalance?: number }): Promise<void> {
@@ -104,4 +143,9 @@ export async function deleteWallet(id: string): Promise<void> {
   });
 
   await parseResponse(response);
+
+  // Update cache to remove deleted wallet
+  const cachedWallets = await getCachedWallets();
+  const updatedWallets = cachedWallets.filter(w => String(w.id) !== String(id));
+  await cacheWallets(updatedWallets);
 }

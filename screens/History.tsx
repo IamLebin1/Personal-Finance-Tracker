@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { getTransactionsByUser, updateTransaction } from '../services/transactionApi';
+import { subscribeToTransactions } from '../db/sqlite';
 import { getWallets } from '../services/walletApi';
 import { getSelectedWalletId, setSelectedWalletId } from '../services/walletService';
 import { formatCurrency } from '../services/transactionService';
@@ -136,6 +137,16 @@ function History() {
   }, []);
 
   useFocusEffect(loadData);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToTransactions(() => {
+      if (hasLoadedRef.current) {
+        loadData();
+      }
+    });
+
+    return unsubscribe;
+  }, [loadData]);
 
   useEffect(() => {
     if (!isLoading) {

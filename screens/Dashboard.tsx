@@ -21,6 +21,8 @@ import {
 import Svg, { Path, Defs, LinearGradient, Stop, Rect, Circle } from 'react-native-svg';
 import { getAuthSession } from '../services/authSession';
 import { getTransactionsByUser } from '../services/transactionApi';
+import { subscribeToTransactions } from '../db/sqlite';
+import { subscribeSync } from '../services/syncService';
 import { getWallets, createWallet } from '../services/walletApi';
 import { getSelectedWalletId, setSelectedWalletId } from '../services/walletService';
 import { formatCurrency } from '../services/transactionService';
@@ -112,6 +114,8 @@ function Dashboard({ navigation }: { navigation: any }) {
   const [monthTrend, setMonthTrend] = useState(0);
   const [totalBudget, setTotalBudget] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
   const [profileData, setProfileData] = useState<any>(null);
   const hasLoadedRef = useRef(false);
 
@@ -138,7 +142,7 @@ function Dashboard({ navigation }: { navigation: any }) {
       try {
         await new Promise(resolve => InteractionManager.runAfterInteractions(() => resolve(null)));
         
-        const fetchedWallets = await getWallets();
+        const fetchedWallets = await getWallets().catch(() => [] as Wallet[]);
         const savedWalletId = await getSelectedWalletId();
         const isAllWallets = !savedWalletId || savedWalletId === 'all';
         const currentWallet = isAllWallets ? null : (fetchedWallets.find(w => String(w.id) === String(savedWalletId)) || null);
@@ -148,7 +152,7 @@ function Dashboard({ navigation }: { navigation: any }) {
         const [scopedTransactions, globalTransactions, budgetData, profData] = await Promise.all([
           getTransactionsByUser(undefined, currentWallet?.id),
           getTransactionsByUser(),
-          getBudgets(currentMonthKey),
+          getBudgets(currentMonthKey).catch(() => []),
           fetch(`${config.apiBaseUrl}/api/auth/profile`, {
             headers: { Authorization: `Bearer ${getAuthSession()?.token}` }
           }).then(res => res.ok ? res.json() : null).catch(() => null)
@@ -213,7 +217,7 @@ function Dashboard({ navigation }: { navigation: any }) {
         setMonthTrend(periodMode === 'month' ? calculateMonthOverMonthTrend(scopedTransactions) : 0);
         hasLoadedRef.current = true;
       } catch (err) {
-        console.error(err);
+        console.warn('Dashboard refresh fallback used:', err);
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -286,6 +290,24 @@ function Dashboard({ navigation }: { navigation: any }) {
 
   useFocusEffect(refreshCallback);
 
+  useEffect(() => {
+    const unsubLocal = subscribeToTransactions(() => {
+      if (hasLoadedRef.current) {
+        refreshCallback();
+      }
+    });
+
+    const unsubSync = subscribeSync(state => {
+      setSyncing(state.syncing);
+      setPendingCount(state.pendingCount);
+    });
+
+    return () => {
+      unsubLocal();
+      unsubSync();
+    };
+  }, [refreshCallback]);
+
   const session = getAuthSession();
   const displayName = session?.username?.trim() || 'User';
 
@@ -294,6 +316,13 @@ function Dashboard({ navigation }: { navigation: any }) {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      {pendingCount > 0 || syncing ? (
+        <View style={[styles.syncBanner, { backgroundColor: syncing ? '#ffdce0' : '#fff4cc' }]}>
+          <Text style={[styles.syncText, { color: '#333' }]}>
+            {syncing ? 'Syncing...' : `Pending: ${pendingCount} unsynced transaction${pendingCount !== 1 ? 's' : ''}`}
+          </Text>
+        </View>
+      ) : null}
       <StatusBar barStyle={colors.statusBar} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Animated.View style={[styles.headerRow, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
@@ -798,6 +827,8 @@ const styles = StyleSheet.create({
   yearCellText: { fontSize: 13, fontWeight: '800' },
   periodApplyBtn: { marginTop: 14, borderRadius: 14, paddingVertical: 12, alignItems: 'center' },
   periodApplyText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  syncBanner: { paddingVertical: 6, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
+  syncText: { fontSize: 13, fontWeight: '600' },
   notificationBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, marginBottom: 12 },
   notificationText: { fontSize: 14, fontWeight: '600' },
   notificationBanner: { borderLeftWidth: 4, borderRadius: 12, padding: 14, marginBottom: 12, overflow: 'hidden' },

@@ -1,4 +1,3 @@
-import { io, Socket } from 'socket.io-client';
 import { config } from '../config/appConfig';
 import { getAuthSession } from './authSession';
 
@@ -18,8 +17,30 @@ interface RecurringSynced {
 
 type NotificationListener = (data: BudgetAlert | RecurringSynced) => void;
 
+type SocketClientModule = {
+  io: typeof import('socket.io-client').io;
+};
+
+let socketClientModule: SocketClientModule | null = null;
+
+function loadSocketClient(): SocketClientModule | null {
+  if (socketClientModule) {
+    return socketClientModule;
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    socketClientModule = require('socket.io-client');
+    return socketClientModule;
+  } catch (error) {
+    console.warn('[Socket] socket.io-client is unavailable. Running without live socket features.', error);
+    socketClientModule = null;
+    return null;
+  }
+}
+
 class SocketService {
-  private socket: Socket | null = null;
+  private socket: any | null = null;
   private budgetAlertListeners: Set<NotificationListener> = new Set();
   private recurringListeners: Set<NotificationListener> = new Set();
   private connectListeners: Set<() => void> = new Set();
@@ -28,10 +49,17 @@ class SocketService {
   connect(serverUrl: string = config.apiBaseUrl): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        const socketClient = loadSocketClient();
+        if (!socketClient?.io) {
+          this.socket = null;
+          resolve();
+          return;
+        }
+
         const normalizedUrl = String(serverUrl || '').trim();
         const baseUrl = normalizedUrl ? normalizedUrl.replace(/\/api\/?$/, '') : 'http://localhost:5001';
         
-        this.socket = io(`${baseUrl}/finance`, {
+        this.socket = socketClient.io(`${baseUrl}/finance`, {
           transports: ['websocket'],
           reconnection: true,
           reconnectionDelay: 1000,
@@ -75,8 +103,9 @@ class SocketService {
           this.disconnectListeners.forEach(listener => listener());
         });
       } catch (error) {
-        console.error('[Socket] Connection failed:', error);
-        reject(error);
+        console.warn('[Socket] Connection skipped or failed; continuing in offline mode.', error);
+        this.socket = null;
+        resolve();
       }
     });
   }

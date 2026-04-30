@@ -7,6 +7,7 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { loadCurrencyPreference, startCurrencyRateFeed, stopCurrencyRateFeed } from './services/currencyService';
 import { loadAuthSession } from './services/authSession';
 import socketService from './services/socketService';
+import { startTransactionSync, stopTransactionSync } from './services/transactionApi';
 
 function AppContent() {
   const { isDark, colors } = useTheme();
@@ -48,6 +49,7 @@ function App() {
       await loadCurrencyPreference();
       await startCurrencyRateFeed();
       await socketService.connect();
+      startTransactionSync();
     })().catch((error) => {
       console.warn('Failed to start app services:', error);
     });
@@ -55,6 +57,7 @@ function App() {
     return () => {
       stopCurrencyRateFeed();
       socketService.disconnect();
+      stopTransactionSync();
     };
   }, []);
 

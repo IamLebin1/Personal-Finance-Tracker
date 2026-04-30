@@ -327,12 +327,29 @@ export default function AddTransaction({ navigation, route }: Props) {
 
   // 4. Effects
   useEffect(() => {
-    getWallets().then(async fetchedWallets => {
-      const savedWalletId = await getSelectedWalletId();
-      setWallets(fetchedWallets);
-      const defaultWalletId = fetchedWallets.find(w => String(w.id) === String(savedWalletId))?.id || fetchedWallets[0]?.id || null;
-      setSelectedWalletId(defaultWalletId);
-    });
+    let isMounted = true;
+
+    const loadWallets = async () => {
+      try {
+        const fetchedWallets = await getWallets();
+        if (!isMounted) return;
+        
+        const savedWalletId = await getSelectedWalletId();
+        setWallets(fetchedWallets || []);
+        const defaultWalletId = fetchedWallets?.find(w => String(w.id) === String(savedWalletId))?.id || fetchedWallets?.[0]?.id || null;
+        setSelectedWalletId(defaultWalletId);
+      } catch (err) {
+        if (!isMounted) return;
+        // Silently fail - wallets will be empty, user can still add transaction
+        setWallets([]);
+        setSelectedWalletId(null);
+      }
+    };
+
+    loadWallets();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {

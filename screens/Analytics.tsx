@@ -28,6 +28,7 @@ import {
 import { convertFromUsd } from '../services/currencyService';
 import { getAuthSession } from '../services/authSession';
 import { getTransactionsByUser } from '../services/transactionApi';
+import { subscribeToTransactions } from '../db/sqlite';
 import { getWallets } from '../services/walletApi';
 import { getSelectedWalletId, setSelectedWalletId } from '../services/walletService';
 import type { Transaction, Wallet } from '../types/transaction';
@@ -119,6 +120,16 @@ function Analytics() {
   }, [currentMonth]);
 
   useFocusEffect(loadData);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToTransactions(() => {
+      if (hasLoadedRef.current) {
+        loadData();
+      }
+    });
+
+    return unsubscribe;
+  }, [loadData]);
 
   useEffect(() => {
     if (!isLoading) {
