@@ -14,7 +14,7 @@ import {
   PanResponder, 
   Platform 
 } from 'react-native';
-import { launchCamera } from 'react-native-image-picker';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { insertTransaction } from '../services/transactionApi';
 import type { RootStackParamList } from '../navigation/RootStackNavigator';
@@ -148,6 +148,22 @@ export default function AddTransaction({ navigation, route }: Props) {
       }
     } catch (err: any) {
       Alert.alert('Receipt Error', err.message || 'Could not snap receipt.');
+    }
+  };
+
+  const onUploadReceipt = async () => {
+    try {
+      const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.7 });
+      if (result.didCancel) return;
+      if (result.errorCode) throw new Error(result.errorMessage || 'Picker error');
+      const asset = result.assets?.[0];
+      if (asset?.uri) {
+        setReceiptUri(asset.uri);
+        const url = await uploadReceiptToCloud(asset.uri);
+        setReceiptUrl(url);
+      }
+    } catch (err: any) {
+      Alert.alert('Receipt Error', err.message || 'Could not upload receipt.');
     }
   };
 
@@ -422,13 +438,22 @@ export default function AddTransaction({ navigation, route }: Props) {
             ))}
           </View>
 
-          <Pressable
-            style={styles.snapReceiptButton}
-            onPress={onSnapReceipt}
-            disabled={isSaving}
-          >
-            <Text style={styles.snapReceiptButtonText}>📸 Snap Receipt</Text>
-          </Pressable>
+          <View style={styles.receiptActionsRow}>
+            <Pressable
+              style={[styles.receiptActionButton, styles.snapReceiptButton]}
+              onPress={onSnapReceipt}
+              disabled={isSaving}
+            >
+              <Text style={styles.snapReceiptButtonText}>📸 Snap Receipt</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.receiptActionButton, styles.uploadReceiptButton]}
+              onPress={onUploadReceipt}
+              disabled={isSaving}
+            >
+              <Text style={styles.uploadReceiptButtonText}>🖼️ Upload Receipt</Text>
+            </Pressable>
+          </View>
           {receiptUri ? (
             <View style={styles.receiptPreviewWrap}>
               <Image source={{ uri: receiptUri }} style={styles.receiptPreviewImage} />
@@ -643,8 +668,15 @@ const styles = StyleSheet.create({
   checkCircle: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   checkIcon: { color: '#fff', fontSize: 12, fontWeight: '800' },
   modalTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
-  snapReceiptButton: {
+  receiptActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
     marginTop: 8,
+  },
+  receiptActionButton: {
+    flex: 1,
+  },
+  snapReceiptButton: {
     borderRadius: 14,
     paddingVertical: 12,
     alignItems: 'center',
@@ -655,6 +687,21 @@ const styles = StyleSheet.create({
   },
   snapReceiptButtonText: {
     color: '#b7bfff',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  uploadReceiptButton: {
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#3f6bff',
+    backgroundColor: '#1f2c5a',
+  },
+  uploadReceiptButtonText: {
+    color: '#bfd2ff',
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.5,

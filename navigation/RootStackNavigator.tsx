@@ -16,6 +16,8 @@ import WalletManagement from '../screens/WalletManagement';
 import OnboardingSetup from '../screens/OnboardingSetup';
 import RecurringTransactions from '../screens/RecurringTransactions';
 import CategoryManagement from '../screens/CategoryManagement';
+import HelpSupport from '../screens/HelpSupport';
+import PrivacyPolicy from '../screens/PrivacyPolicy';
 import type { Transaction } from '../types/transaction';
 import { loadAuthSession } from '../services/authSession';
 import { hasCompletedOnboarding, setOnboardingCompleted } from '../services/onboardingService';
@@ -25,6 +27,8 @@ export type RootStackParamList = {
   Login: { prefillEmail?: string; registeredName?: string } | undefined;
   Register: undefined;
   ForgotPassword: { prefillUsername?: string } | undefined;
+  HelpSupport: undefined;
+  PrivacyPolicy: undefined;
   MainTabs: undefined;
   AddTransaction: { fromFab?: boolean; originX?: number; originY?: number } | undefined;
   TransactionDetail: { transaction: Transaction };
@@ -156,6 +160,16 @@ export default function RootStackNavigator() {
           name="OnboardingSetup"
           component={OnboardingSetup}
           options={{ headerShown: false, gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="HelpSupport"
+          component={HelpSupport}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="PrivacyPolicy"
+          component={PrivacyPolicy}
+          options={{ headerShown: false }}
         />
         <Stack.Screen
           name="RecurringTransactions"

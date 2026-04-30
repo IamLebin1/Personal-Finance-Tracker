@@ -29,7 +29,7 @@ const typeOptions: Array<{ id: CategoryType; label: string }> = [
   { id: 'income', label: 'Income' },
 ];
 
-export default function CategoryManagement(_props: Props) {
+export default function CategoryManagement({ navigation }: Props) {
   const { colors } = useTheme();
   const [activeType, setActiveType] = useState<CategoryType>('expense');
   const [categories, setCategories] = useState<Category[]>([]);
@@ -94,7 +94,12 @@ export default function CategoryManagement(_props: Props) {
       <StatusBar barStyle={colors.statusBar} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
-          <Text style={[styles.title, { color: colors.text }]}>Manage Categories</Text>
+          <View style={styles.headerLeft}>
+            <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+              <Text style={[styles.backIcon, { color: colors.text }]}>←</Text>
+            </Pressable>
+            <Text style={[styles.title, { color: colors.text }]}>Manage Categories</Text>
+          </View>
           <Pressable style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => setIsAddVisible(true)}>
             <Text style={styles.addBtnText}>+ Add</Text>
           </Pressable>
@@ -200,6 +205,9 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 60, paddingBottom: 40 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
+  backBtn: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center', marginRight: 6 },
+  backIcon: { fontSize: 24, fontWeight: '300' },
   title: { fontSize: 28, fontWeight: '800' },
   addBtn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   addBtnText: { color: '#fff', fontWeight: '700' },

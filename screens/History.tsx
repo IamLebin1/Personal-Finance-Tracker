@@ -158,6 +158,8 @@ function History() {
       filtered = filtered.filter(tx => tx.type === 'income');
     } else if (activeFilter === 'Expense') {
       filtered = filtered.filter(tx => tx.type === 'expense');
+    } else if (activeFilter === 'Transfer') {
+      filtered = filtered.filter(tx => tx.type === 'transfer');
     }
     // Date range filter
     if (fromDateFilter) {
@@ -314,7 +316,7 @@ function History() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.filterChipRow}
           >
-            {['All', 'Income', 'Expense'].map(filter => (
+            {['All', 'Income', 'Expense', 'Transfer'].map(filter => (
               <Pressable
                 key={filter}
                 onPress={() => setActiveFilter(filter)}
