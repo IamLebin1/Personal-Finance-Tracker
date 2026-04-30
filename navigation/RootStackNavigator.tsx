@@ -164,12 +164,12 @@ export default function RootStackNavigator() {
         <Stack.Screen
           name="HelpSupport"
           component={HelpSupport}
-          options={{ title: 'Help & Support' }}
+          options={{ headerShown: false }}
         />
         <Stack.Screen
           name="PrivacyPolicy"
           component={PrivacyPolicy}
-          options={{ title: 'Privacy Policy' }}
+          options={{ headerShown: false }}
         />
         <Stack.Screen
           name="RecurringTransactions"

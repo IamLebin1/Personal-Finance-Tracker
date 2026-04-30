@@ -1,5 +1,5 @@
 import React from "react";
-import { ScrollView, StyleSheet, Text, View, Pressable, StatusBar } from "react-native";
+import { ScrollView, StyleSheet, Text, View, Pressable, StatusBar, Platform } from "react-native";
 import { useTheme } from "../context/ThemeContext";
 import { useNavigation } from "@react-navigation/native";
 
@@ -32,7 +32,7 @@ export default function HelpSupport() {
 
       <View style={[styles.header, { borderBottomColor: colors.cardBorder }]}>
         <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={[styles.backText, { color: colors.text }]}>{"<"}</Text>
+          <Text style={[styles.backIcon, { color: colors.text }]}>←</Text>
         </Pressable>
         <Text style={[styles.title, { color: colors.text }]}>Help &amp; Support</Text>
         <View style={{ width: 40 }} />
@@ -80,12 +80,13 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingTop: Platform.OS === "ios" ? 60 : 40,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   backBtn: { width: 40, height: 40, justifyContent: "center" },
-  backText: { fontSize: 18, fontWeight: "800" },
+  backIcon: { fontSize: 24, fontWeight: "300" },
   title: { flex: 1, textAlign: "center", fontSize: 18, fontWeight: "800" },
   content: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 28 },
   sectionTitle: { fontSize: 16, fontWeight: "800", marginBottom: 10 },

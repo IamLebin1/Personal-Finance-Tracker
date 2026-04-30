@@ -216,6 +216,7 @@ function Profile() {
     else if (item.id === 'categories') navigation.navigate('CategoryManagement' as never);
     else if (item.id === 'budget') navigation.navigate('Budget' as never);
     else if (item.id === 'recurring') navigation.navigate('RecurringTransactions' as never);
+    else if (item.id === 'notifications') navigation.navigate('Notifications' as never);
     else if (item.id === 'currency') setIsCurrencyModalVisible(true);
     else if (item.id === 'help') navigation.navigate('HelpSupport' as never);
     else if (item.id === 'privacy') navigation.navigate('PrivacyPolicy' as never);
