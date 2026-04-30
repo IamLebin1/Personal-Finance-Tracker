@@ -23,6 +23,24 @@ function getAuthHeaders(): Record<string, string> {
   };
 }
 
+async function fetchWithTimeout<T>(input: RequestInfo | URL, init: RequestInit & { timeoutMs?: number }): Promise<T> {
+  const { timeoutMs = 10000, ...rest } = init;
+
+  // Abort stuck network calls so UI doesn't stay in a loading state forever.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(input, {
+      ...rest,
+      signal: controller.signal,
+    });
+    return parseResponse<T>(response);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
@@ -32,24 +50,26 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 export async function getBudgets(month: string): Promise<Budget[]> {
-  const response = await fetch(`${config.apiBaseUrl}/api/budgets?month=${encodeURIComponent(month)}`, {
+  return fetchWithTimeout<Budget[]>(`${config.apiBaseUrl}/api/budgets?month=${encodeURIComponent(month)}`, {
+    method: 'GET',
     headers: getAuthHeaders(),
+    timeoutMs: 12000,
   });
-  return parseResponse<Budget[]>(response);
 }
 
 export async function setBudget(category: string, month: string, amount: number): Promise<void> {
-  const response = await fetch(`${config.apiBaseUrl}/api/budgets`, {
+  await fetchWithTimeout<void>(`${config.apiBaseUrl}/api/budgets`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify({ category, month, amount }),
+    timeoutMs: 12000,
   });
-  await parseResponse(response);
 }
 
 export async function getBudgetVsActual(month: string): Promise<BudgetVsActual[]> {
-  const response = await fetch(`${config.apiBaseUrl}/api/analytics/budget-vs-actual?month=${encodeURIComponent(month)}`, {
+  return fetchWithTimeout<BudgetVsActual[]>(`${config.apiBaseUrl}/api/analytics/budget-vs-actual?month=${encodeURIComponent(month)}`, {
+    method: 'GET',
     headers: getAuthHeaders(),
+    timeoutMs: 12000,
   });
-  return parseResponse<BudgetVsActual[]>(response);
 }

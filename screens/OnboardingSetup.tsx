@@ -15,7 +15,7 @@ import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { setPreferredCurrency, type CurrencyCode, convertToUsd, getCurrencyState } from '../services/currencyService';
 import { createWallet } from '../services/walletApi';
 import { setSelectedWalletId } from '../services/walletService';
-import { getAuthSession, loadAuthSession } from '../services/authSession';
+import { clearAuthSession, getAuthSession, loadAuthSession } from '../services/authSession';
 import { setOnboardingCompleted } from '../services/onboardingService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OnboardingSetup'>;
@@ -80,15 +80,18 @@ export default function OnboardingSetup({ navigation }: Props) {
       navigation.replace('MainTabs');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to finish setup right now.';
-      
-      // If token is invalid/expired, redirect to login
-      if (message.includes('Invalid or expired token') || message.includes('Missing auth token')) {
-        Alert.alert('Session expired', 'Your session has expired. Please login again.', [
-          { text: 'OK', onPress: () => navigation.replace('Login') }
-        ]);
-      } else {
-        Alert.alert('Setup failed', message);
+      const maybeStatus = (error as any)?.status;
+
+      // If our local session token no longer exists on the server (e.g. after DB/server changes),
+      // recover by logging out and forcing a fresh login.
+      if (maybeStatus === 401 || message.toLowerCase().includes('invalid or expired token')) {
+        await clearAuthSession();
+        Alert.alert('Session expired', 'Please login again.');
+        navigation.replace('Login');
+        return;
       }
+
+      Alert.alert('Setup failed', message);
     } finally {
       setSubmitting(false);
     }
