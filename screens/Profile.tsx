@@ -196,6 +196,8 @@ function Profile() {
   ], []);
 
   const generalRows = useMemo(() => [
+    { id: 'wallets', icon: '👛', title: 'Wallets', subtitle: 'Manage your wallets' },
+    { id: 'categories', icon: '🏷️', title: 'Manage Categories', subtitle: 'Income and expense categories' },
     { id: 'budget', icon: '📊', title: 'Monthly Budget', subtitle: 'Set your spending limits' },
     { id: 'recurring', icon: '⏰', title: 'Recurring Bills', subtitle: 'Rent, subscriptions, paychecks' },
     { id: 'notifications', icon: '🔔', title: 'Notifications', subtitle: 'Alerts, Reminders' },
@@ -210,6 +212,8 @@ function Profile() {
   const handleRowPress = (item: any) => {
     if (item.id === 'details') navigation.navigate('ProfileDetails' as never);
     else if (item.id === 'security') navigation.navigate('SecuritySettings' as never);
+    else if (item.id === 'wallets') navigation.navigate('WalletManagement' as never);
+    else if (item.id === 'categories') navigation.navigate('CategoryManagement' as never);
     else if (item.id === 'budget') navigation.navigate('Budget' as never);
     else if (item.id === 'recurring') navigation.navigate('RecurringTransactions' as never);
     else if (item.id === 'currency') setIsCurrencyModalVisible(true);
@@ -269,20 +273,7 @@ function Profile() {
           </View>
         </View>
 
-        <View style={[styles.statsGrid, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-          <View style={styles.statBox}>
-            <Text style={[styles.statLabel, { color: colors.textMuted }]}>Total Txns</Text>
-            <Text style={[styles.statValue, { color: colors.text }]}>{isLoading ? '...' : stats.count}</Text>
-          </View>
-          <View style={[styles.statBox, styles.statDivider, { borderColor: colors.cardBorder }]}>
-            <Text style={[styles.statLabel, { color: colors.textMuted }]}>Income</Text>
-            <Text style={[styles.statValue, { color: colors.success }]}>{isLoading ? '...' : formatCurrency(stats.totalIncome)}</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={[styles.statLabel, { color: colors.textMuted }]}>Expenses</Text>
-            <Text style={[styles.statValue, { color: colors.danger }]}>{isLoading ? '...' : formatCurrency(stats.totalExpense)}</Text>
-          </View>
-        </View>
+        {/* Stats removed per design: Total Txns/Income/Expenses hidden */}
 
         <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Appearance</Text>
         <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>

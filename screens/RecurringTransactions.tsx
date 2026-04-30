@@ -98,6 +98,7 @@ export default function RecurringTransactionsScreen() {
   const [selectedWalletId, setSelectedWalletIdState] = useState<string | null>(null);
   const [isWalletModalVisible, setIsWalletModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isFormModalVisible, setIsFormModalVisible] = useState(false);
 
   const [amount, setAmount] = useState('');
   const [transactionType, setTransactionType] = useState<'expense' | 'income'>('expense');
@@ -314,173 +315,9 @@ export default function RecurringTransactionsScreen() {
           </View>
         </View>
 
-        <View style={[styles.formCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>{editingId ? 'Edit Schedule' : 'New Schedule'}</Text>
-            {editingId ? (
-              <Pressable onPress={resetForm}>
-                <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel</Text>
-              </Pressable>
-            ) : null}
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Amount</Text>
-            <TextInput
-              value={amount}
-              onChangeText={setAmount}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              placeholderTextColor={colors.textMuted + '60'}
-              style={[styles.amountInput, { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.background }]}
-            />
-          </View>
-
-          <View style={styles.typeRow}>
-            {TRANSACTION_TYPES.map(typeItem => {
-              const active = transactionType === typeItem.value;
-              return (
-                <Pressable
-                  key={typeItem.value}
-                  onPress={() => setTransactionType(typeItem.value)}
-                  style={[
-                    styles.typeChip,
-                    { borderColor: colors.cardBorder, backgroundColor: colors.background },
-                    active && { backgroundColor: colors.primary, borderColor: colors.primary },
-                  ]}
-                >
-                  <Text style={styles.typeEmoji}>{typeItem.emoji}</Text>
-                  <Text style={[styles.typeLabel, { color: active ? '#fff' : colors.text }]}>{typeItem.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Category</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-            {CATEGORIES.map(cat => {
-              const active = selectedCategory === cat.key;
-              return (
-                <Pressable
-                  key={cat.key}
-                  onPress={() => setSelectedCategory(cat.key)}
-                  style={[
-                    styles.categoryChip,
-                    { borderColor: colors.cardBorder, backgroundColor: colors.background },
-                    active && { backgroundColor: colors.primaryBg, borderColor: colors.primary },
-                  ]}
-                >
-                  <Text style={styles.categoryIcon}>{cat.icon}</Text>
-                  <Text style={[styles.categoryLabel, { color: active ? colors.primary : colors.text }]}>{cat.label}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
-          <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Frequency</Text>
-          <View style={styles.frequencyGrid}>
-            {FREQUENCIES.map(freq => {
-              const active = selectedFrequency === freq.value;
-              return (
-                <Pressable
-                  key={freq.value}
-                  onPress={() => setSelectedFrequency(freq.value)}
-                  style={[
-                    styles.frequencyCard,
-                    { borderColor: colors.cardBorder, backgroundColor: colors.background },
-                    active && { backgroundColor: colors.primaryBg, borderColor: colors.primary },
-                  ]}
-                >
-                  <Text style={[styles.frequencyLabel, { color: active ? colors.primary : colors.text }]}>{freq.label}</Text>
-                  <Text style={[styles.frequencySubtitle, { color: colors.textMuted }]}>{freq.subtitle}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={styles.rowInputs}>
-            <View style={styles.halfInputWrap}>
-              <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Every</Text>
-              <TextInput
-                value={intervalCount}
-                onChangeText={setIntervalCount}
-                keyboardType="number-pad"
-                style={[styles.smallInput, { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.background }]}
-                placeholder="1"
-                placeholderTextColor={colors.textMuted + '60'}
-              />
-            </View>
-            <View style={styles.halfInputWrap}>
-              <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Next run</Text>
-              <TextInput
-                value={nextRunDate}
-                onChangeText={setNextRunDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textMuted + '60'}
-                style={[styles.smallInput, { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.background }]}
-              />
-            </View>
-          </View>
-
-          <View style={styles.rowInputs}>
-            <View style={styles.halfInputWrap}>
-              <Text style={[styles.inputLabel, { color: colors.textMuted }]}>End date</Text>
-              <TextInput
-                value={endDate}
-                onChangeText={setEndDate}
-                placeholder="Optional"
-                placeholderTextColor={colors.textMuted + '60'}
-                style={[styles.smallInput, { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.background }]}
-              />
-            </View>
-            <View style={styles.halfInputWrap}>
-              <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Status</Text>
-              <Pressable
-                onPress={() => setIsActive(prev => !prev)}
-                style={[
-                  styles.statusToggle,
-                  { borderColor: colors.cardBorder, backgroundColor: colors.background },
-                  isActive && { backgroundColor: colors.success + '20', borderColor: colors.success },
-                ]}
-              >
-                <Text style={[styles.statusText, { color: isActive ? colors.success : colors.textMuted }]}>{isActive ? 'Active' : 'Paused'}</Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Note</Text>
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              placeholder="Rent, salary, Netflix, ..."
-              placeholderTextColor={colors.textMuted + '60'}
-              style={[styles.noteInput, { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.background }]}
-              multiline
-            />
-          </View>
-
-          <Pressable
-            onPress={() => setIsWalletModalVisible(true)}
-            style={[styles.walletPicker, { backgroundColor: colors.background, borderColor: colors.cardBorder }]}
-          >
-            <View>
-              <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Wallet</Text>
-              <Text style={[styles.walletValue, { color: colors.text }]}>{selectedWallet?.name || 'Select wallet'}</Text>
-            </View>
-            <Text style={[styles.walletChevron, { color: colors.textMuted }]}>›</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={handleSubmit}
-            disabled={isSaving}
-            style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: isSaving ? 0.8 : 1 }]}
-          >
-            {isSaving ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.saveBtnText}>{editingId ? 'Update Schedule' : 'Create Schedule'}</Text>
-            )}
+        <View style={{ marginBottom: 18 }}>
+          <Pressable style={[styles.addRecurringBtn, { backgroundColor: colors.primary }]} onPress={() => setIsFormModalVisible(true)}>
+            <Text style={[styles.addRecurringText, { color: '#fff' }]}>+ Add Recurring Bill</Text>
           </Pressable>
         </View>
 
@@ -537,7 +374,185 @@ export default function RecurringTransactionsScreen() {
             );
           })
         )}
-      </ScrollView>
+        </ScrollView>
+
+        {/* Form Modal for creating/editing recurring schedules */}
+        <Modal visible={isFormModalVisible} transparent animationType="slide" onRequestClose={() => { setIsFormModalVisible(false); resetForm(); }}>
+          <Pressable style={styles.modalOverlay} onPress={() => { setIsFormModalVisible(false); resetForm(); }}>
+            <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]} onPress={e => e.stopPropagation()}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>{editingId ? 'Edit Schedule' : 'New Schedule'}</Text>
+                {editingId ? (
+                  <Pressable onPress={resetForm}>
+                    <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Amount</Text>
+                <TextInput
+                  value={amount}
+                  onChangeText={setAmount}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textMuted + '60'}
+                  style={[styles.amountInput, { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.background }]}
+                />
+              </View>
+
+              <View style={styles.typeRow}>
+                {TRANSACTION_TYPES.map(typeItem => {
+                  const active = transactionType === typeItem.value;
+                  return (
+                    <Pressable
+                      key={typeItem.value}
+                      onPress={() => setTransactionType(typeItem.value)}
+                      style={[
+                        styles.typeChip,
+                        { borderColor: colors.cardBorder, backgroundColor: colors.background },
+                        active && { backgroundColor: colors.primary, borderColor: colors.primary },
+                      ]}
+                    >
+                      <Text style={styles.typeEmoji}>{typeItem.emoji}</Text>
+                      <Text style={[styles.typeLabel, { color: active ? '#fff' : colors.text }]}>{typeItem.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Category</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                {CATEGORIES.map(cat => {
+                  const active = selectedCategory === cat.key;
+                  return (
+                    <Pressable
+                      key={cat.key}
+                      onPress={() => setSelectedCategory(cat.key)}
+                      style={[
+                        styles.categoryChip,
+                        { borderColor: colors.cardBorder, backgroundColor: colors.background },
+                        active && { backgroundColor: colors.primaryBg, borderColor: colors.primary },
+                      ]}
+                    >
+                      <Text style={styles.categoryIcon}>{cat.icon}</Text>
+                      <Text style={[styles.categoryLabel, { color: active ? colors.primary : colors.text }]}>{cat.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+
+              <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Frequency</Text>
+              <View style={styles.frequencyGrid}>
+                {FREQUENCIES.map(freq => {
+                  const active = selectedFrequency === freq.value;
+                  return (
+                    <Pressable
+                      key={freq.value}
+                      onPress={() => setSelectedFrequency(freq.value)}
+                      style={[
+                        styles.frequencyCard,
+                        { borderColor: colors.cardBorder, backgroundColor: colors.background },
+                        active && { backgroundColor: colors.primaryBg, borderColor: colors.primary },
+                      ]}
+                    >
+                      <Text style={[styles.frequencyLabel, { color: active ? colors.primary : colors.text }]}>{freq.label}</Text>
+                      <Text style={[styles.frequencySubtitle, { color: colors.textMuted }]}>{freq.subtitle}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.rowInputs}>
+                <View style={styles.halfInputWrap}>
+                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Every</Text>
+                  <TextInput
+                    value={intervalCount}
+                    onChangeText={setIntervalCount}
+                    keyboardType="number-pad"
+                    style={[styles.smallInput, { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.background }]}
+                    placeholder="1"
+                    placeholderTextColor={colors.textMuted + '60'}
+                  />
+                </View>
+                <View style={styles.halfInputWrap}>
+                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Next run</Text>
+                  <TextInput
+                    value={nextRunDate}
+                    onChangeText={setNextRunDate}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={colors.textMuted + '60'}
+                    style={[styles.smallInput, { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.background }]}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.rowInputs}>
+                <View style={styles.halfInputWrap}>
+                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>End date</Text>
+                  <TextInput
+                    value={endDate}
+                    onChangeText={setEndDate}
+                    placeholder="Optional"
+                    placeholderTextColor={colors.textMuted + '60'}
+                    style={[styles.smallInput, { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.background }]}
+                  />
+                </View>
+                <View style={styles.halfInputWrap}>
+                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Status</Text>
+                  <Pressable
+                    onPress={() => setIsActive(prev => !prev)}
+                    style={[
+                      styles.statusToggle,
+                      { borderColor: colors.cardBorder, backgroundColor: colors.background },
+                      isActive && { backgroundColor: colors.success + '20', borderColor: colors.success },
+                    ]}
+                  >
+                    <Text style={[styles.statusText, { color: isActive ? colors.success : colors.textMuted }]}>{isActive ? 'Active' : 'Paused'}</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Note</Text>
+                <TextInput
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="Rent, salary, Netflix, ..."
+                  placeholderTextColor={colors.textMuted + '60'}
+                  style={[styles.noteInput, { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.background }]}
+                  multiline
+                />
+              </View>
+
+              <Pressable
+                onPress={() => setIsWalletModalVisible(true)}
+                style={[styles.walletPicker, { backgroundColor: colors.background, borderColor: colors.cardBorder }]}
+              >
+                <View>
+                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Wallet</Text>
+                  <Text style={[styles.walletValue, { color: colors.text }]}>{selectedWallet?.name || 'Select wallet'}</Text>
+                </View>
+                <Text style={[styles.walletChevron, { color: colors.textMuted }]}>›</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={async () => {
+                  await handleSubmit();
+                  setIsFormModalVisible(false);
+                }}
+                disabled={isSaving}
+                style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: isSaving ? 0.8 : 1 }]}
+              >
+                {isSaving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.saveBtnText}>{editingId ? 'Update Schedule' : 'Create Schedule'}</Text>
+                )}
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
       <Modal visible={isWalletModalVisible} transparent animationType="fade" onRequestClose={() => setIsWalletModalVisible(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setIsWalletModalVisible(false)}>
@@ -641,7 +656,10 @@ const styles = StyleSheet.create({
   scheduleActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
   actionBtn: { flex: 1, borderRadius: 14, borderWidth: 1, alignItems: 'center', paddingVertical: 10 },
   actionBtnText: { fontSize: 13, fontWeight: '800' },
+  addRecurringBtn: { minHeight: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  addRecurringText: { fontSize: 15, fontWeight: '800' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
+  modalCard: { width: '100%', maxHeight: '80%', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, borderTopWidth: 1 },
   walletModal: { width: '100%', maxHeight: '70%', borderRadius: 28, borderWidth: 1, padding: 18 },
   modalTitle: { fontSize: 20, fontWeight: '800', marginBottom: 14, textAlign: 'center' },
   walletList: { maxHeight: 360 },

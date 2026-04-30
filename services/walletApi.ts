@@ -1,6 +1,14 @@
 import { config } from '../config/appConfig';
-import { getAuthSession } from './authSession';
+import { getAuthSession, loadAuthSession } from './authSession';
 import type { Wallet } from '../types/transaction';
+
+async function getValidSession() {
+  let session = getAuthSession();
+  if (!session?.token) {
+    session = await loadAuthSession();
+  }
+  return session;
+}
 
 function getAuthHeaders(): Record<string, string> {
   const session = getAuthSession();
@@ -27,6 +35,9 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 export async function getWallets(): Promise<Wallet[]> {
+  // Ensure session is loaded before making the request
+  await getValidSession();
+  
   const response = await fetch(`${config.apiBaseUrl}/api/wallets`, {
     headers: {
       ...getAuthHeaders(),
@@ -36,7 +47,13 @@ export async function getWallets(): Promise<Wallet[]> {
   return parseResponse<Wallet[]>(response);
 }
 
-export async function createWallet(input: { name: string; color?: string; icon?: string }): Promise<Wallet> {
+export async function createWallet(input: { name: string; color?: string; icon?: string; initialBalance?: number }): Promise<Wallet> {
+  // Ensure session is loaded before making the request
+  const session = await getValidSession();
+  if (!session?.userId) {
+    throw new Error('User session is not valid');
+  }
+
   const response = await fetch(`${config.apiBaseUrl}/api/wallets`, {
     method: 'POST',
     headers: {
@@ -47,19 +64,22 @@ export async function createWallet(input: { name: string; color?: string; icon?:
   });
 
   const payload = await parseResponse<{ id: number | string }>(response);
-  const session = getAuthSession();
 
   return {
     id: String(payload.id),
     name: input.name,
-    userId: String(session?.userId || ''),
+    userId: String(session.userId),
     color: input.color || '#6e57ff',
     icon: input.icon || '👛',
+    initialBalance: input.initialBalance || 0,
     createdAt: new Date().toISOString(),
   };
 }
 
-export async function updateWallet(id: string, input: { name: string; color?: string; icon?: string }): Promise<void> {
+export async function updateWallet(id: string, input: { name: string; color?: string; icon?: string; initialBalance?: number }): Promise<void> {
+  // Ensure session is loaded before making the request
+  await getValidSession();
+
   const response = await fetch(`${config.apiBaseUrl}/api/wallets/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: {
@@ -73,6 +93,9 @@ export async function updateWallet(id: string, input: { name: string; color?: st
 }
 
 export async function deleteWallet(id: string): Promise<void> {
+  // Ensure session is loaded before making the request
+  await getValidSession();
+
   const response = await fetch(`${config.apiBaseUrl}/api/wallets/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: {

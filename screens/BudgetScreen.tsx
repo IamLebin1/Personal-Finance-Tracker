@@ -19,10 +19,11 @@ import { setBudget, getBudgets } from '../services/budgetApi';
 import { CATEGORIES } from '../constants/categories';
 import { useCurrency } from '../services/useCurrency';
 import { clearAuthSession } from '../services/authSession';
+import { convertFromUsd, convertToUsd } from '../services/currencyService';
 
 export default function BudgetScreen() {
   const { colors } = useTheme();
-  const { symbol, convertFromUsd, convertToUsd } = useCurrency();
+  const { symbol } = useCurrency();
   const navigation = useNavigation();
   const [isLoading, setIsLoading] = useState(true);
   const [month] = useState(() => {

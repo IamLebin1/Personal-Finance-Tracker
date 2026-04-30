@@ -15,8 +15,7 @@ import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { setPreferredCurrency, type CurrencyCode, convertToUsd, getCurrencyState } from '../services/currencyService';
 import { createWallet } from '../services/walletApi';
 import { setSelectedWalletId } from '../services/walletService';
-import { insertTransaction } from '../services/transactionApi';
-import { clearAuthSession, getAuthSession } from '../services/authSession';
+import { clearAuthSession, getAuthSession, loadAuthSession } from '../services/authSession';
 import { setOnboardingCompleted } from '../services/onboardingService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OnboardingSetup'>;
@@ -38,11 +37,16 @@ export default function OnboardingSetup({ navigation }: Props) {
   const currencyLabel = currency === 'MYR' ? 'MYR' : 'USD';
 
   const handleContinue = async () => {
-    const session = getAuthSession();
+    // Ensure session is loaded from AsyncStorage before proceeding
+    let session = getAuthSession();
+    if (!session) {
+      session = await loadAuthSession();
+    }
+    
     const userId = session?.userId || '';
     const safeWalletName = walletName.trim();
 
-    if (!userId) {
+    if (!userId || !session?.token) {
       Alert.alert('Session expired', 'Please login again.');
       navigation.replace('Login');
       return;
@@ -63,27 +67,15 @@ export default function OnboardingSetup({ navigation }: Props) {
     try {
       await setPreferredCurrency(currency);
 
+      // Convert from selected currency to USD for storage
+      const amountInUsd = parsedWorth > 0 ? convertToUsd(parsedWorth, currency) : 0;
+
       const wallet = await createWallet({
         name: safeWalletName,
+        initialBalance: amountInUsd,
       });
 
       await setSelectedWalletId(String(wallet.id));
-
-      if (parsedWorth > 0) {
-        // Convert from selected currency to USD for storage
-        const amountInUsd = convertToUsd(parsedWorth, currency);
-        
-        await insertTransaction({
-          amount: amountInUsd,
-          type: 'income',
-          category: 'Initial Balance',
-          date: new Date().toISOString(),
-          note: 'Initial wallet setup',
-          userId,
-          walletId: String(wallet.id),
-        });
-      }
-
       await setOnboardingCompleted(userId, true);
       navigation.replace('MainTabs');
     } catch (error) {

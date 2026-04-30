@@ -2,10 +2,13 @@ const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const crypto = require('crypto');
+const http = require('http');
+const { Server } = require('socket.io');
 
 const path = require('path');
 const app = express();
 const DB = path.join(__dirname, 'finance_tracker.sqlite');
+let financeNamespace = null;
 
 app.use(cors());
 app.use(express.json());
@@ -133,6 +136,54 @@ function addRecurringInterval(dateValue, frequency, intervalCount = 1) {
   return nextDate;
 }
 
+function emitBudgetAlertsForUser(userId, dateValue) {
+  if (!financeNamespace) {
+    return;
+  }
+
+  const targetDate = dateValue ? new Date(dateValue) : new Date();
+  if (Number.isNaN(targetDate.getTime())) {
+    return;
+  }
+
+  const monthKey = targetDate.toISOString().slice(0, 7);
+  const db = openDb();
+
+  db.all(
+    `SELECT b.category, b.amount AS budgetAmount,
+            COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS actualAmount
+     FROM budgets b
+     LEFT JOIN transactions t
+       ON t.userId = b.userId
+      AND t.category = b.category
+      AND substr(t.date, 1, 7) = b.month
+     WHERE b.userId = ? AND b.month = ?
+     GROUP BY b.category, b.amount`,
+    [userId, monthKey],
+    (err, rows) => {
+      closeDb(db);
+
+      if (err || !rows || rows.length === 0) {
+        return;
+      }
+
+      rows.forEach(row => {
+        const budgetAmount = Number(row.budgetAmount) || 0;
+        const actualAmount = Number(row.actualAmount) || 0;
+        if (budgetAmount > 0 && actualAmount >= budgetAmount * 0.9) {
+          financeNamespace.to(`user_${userId}`).emit('budget_alert', {
+            category: row.category,
+            spent: Math.round(actualAmount * 100) / 100,
+            limit: Math.round(budgetAmount * 100) / 100,
+            percentUsed: Math.round((actualAmount / budgetAmount) * 100),
+            message: `${row.category} budget is ${Math.round((actualAmount / budgetAmount) * 100)}% used for ${monthKey}`,
+          });
+        }
+      });
+    }
+  );
+}
+
 function ensureRecurringTransactionsColumns(db, onDone) {
   db.all('PRAGMA table_info(recurring_transactions)', [], (err, rows) => {
     if (err) {
@@ -151,6 +202,46 @@ function ensureRecurringTransactionsColumns(db, onDone) {
     }
     if (!existingColumns.has('endDate')) {
       alterStatements.push('ALTER TABLE recurring_transactions ADD COLUMN endDate TEXT');
+    }
+
+    if (alterStatements.length === 0) {
+      if (typeof onDone === 'function') {
+        onDone();
+      }
+      return;
+    }
+
+    let pending = alterStatements.length;
+    alterStatements.forEach(sql => {
+      db.run(sql, alterErr => {
+        if (alterErr) {
+          console.error(`Error altering table: ${sql}`, alterErr.message);
+        }
+
+        pending -= 1;
+        if (pending === 0 && typeof onDone === 'function') {
+          onDone();
+        }
+      });
+    });
+  });
+}
+
+function ensureWalletColumns(db, onDone) {
+  db.all('PRAGMA table_info(wallets)', [], (err, rows) => {
+    if (err) {
+      console.error(err.message);
+      if (typeof onDone === 'function') {
+        onDone();
+      }
+      return;
+    }
+
+    const existingColumns = new Set((rows || []).map(column => column.name));
+    const alterStatements = [];
+
+    if (!existingColumns.has('initialBalance')) {
+      alterStatements.push('ALTER TABLE wallets ADD COLUMN initialBalance REAL DEFAULT 0');
     }
 
     if (alterStatements.length === 0) {
@@ -266,6 +357,7 @@ function syncRecurringTransactionsForUser(db, userId, onDone) {
             insertErr => {
               if (!insertErr) {
                 generated += 1;
+                emitBudgetAlertsForUser(userId, dueDate.toISOString());
               } else {
                 console.error('Error creating recurring transaction:', insertErr.message);
               }
@@ -390,6 +482,7 @@ function ensureTables(onDone) {
         name TEXT NOT NULL,
         color TEXT,
         icon TEXT,
+        initialBalance REAL DEFAULT 0,
         createdAt TEXT NOT NULL,
         FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
       )
@@ -458,6 +551,7 @@ function ensureTables(onDone) {
 
     ensureTransactionColumns(db, () => {
       ensureRecurringTransactionsColumns(db, () => {
+        ensureWalletColumns(db, () => {
         db.run(`
           CREATE INDEX IF NOT EXISTS idx_transactions_wallet
           ON transactions(walletId)
@@ -466,20 +560,16 @@ function ensureTables(onDone) {
           CREATE INDEX IF NOT EXISTS idx_recurring_transactions_user_next
           ON recurring_transactions(userId, isActive, nextRunDate)
         `);
-      // Seed default wallet for each user if not exists
-      db.all('SELECT id FROM users', [], (userErr, userRows) => {
+        // Seed default wallet for each user if not exists
+        db.all('SELECT id FROM users', [], (userErr, userRows) => {
         if (userErr || !userRows || userRows.length === 0) {
           finish();
           return;
         }
 
-        let userPending = userRows.length;
-
-        userRows.forEach(user => {
-          db.get(
-            'SELECT id FROM wallets WHERE userId = ? LIMIT 1',
-            [user.id],
-            (walletErr, walletRow) => {
+          let userPending = userRows.length;
+          userRows.forEach(user => {
+            db.get('SELECT id FROM wallets WHERE userId = ? LIMIT 1', [user.id], (walletErr, walletRow) => {
               if (!walletErr && !walletRow) {
                 db.run(
                   'INSERT INTO wallets(userId, name, color, icon, createdAt) VALUES (?, ?, ?, ?, ?)',
@@ -534,7 +624,9 @@ function ensureTables(onDone) {
       }
       });
     });
+      });
   });
+});
 }
 
 function seedTransactions(onDone) {
@@ -582,9 +674,63 @@ function seedTransactions(onDone) {
 
 function startServer() {
   const PORT = process.env.PORT || 5001;
-  const server = app.listen(PORT, '0.0.0.0', () => {
+  const server = http.createServer(app);
+  const io = new Server(server, {
+    cors: { origin: '*', methods: ['GET', 'POST'] }
+  });
+
+  // Socket.IO namespace for finance notifications
+  const finance = io.of('/finance');
+  financeNamespace = finance;
+
+  finance.on('connection', (socket) => {
+    console.log(`[Socket] User connected: ${socket.id}`);
+
+    // Receive user login event
+    socket.on('user_login', (data) => {
+      const userId = data.userId;
+      // Join user to their own room for private notifications
+      socket.join(`user_${userId}`);
+      console.log(`[Socket] User ${userId} joined room`);
+    });
+
+    // Listen for budget check requests
+    socket.on('check_budget', (data) => {
+      const { userId, category, spent, limit } = data;
+      const percentUsed = (spent / limit) * 100;
+      
+      if (percentUsed >= 90) {
+        // Emit budget alert back to specific user
+        finance.to(`user_${userId}`).emit('budget_alert', {
+          category,
+          spent: Math.round(spent * 100) / 100,
+          limit: Math.round(limit * 100) / 100,
+          percentUsed: Math.round(percentUsed),
+          message: `You have used ${Math.round(percentUsed)}% of your ${category} budget`
+        });
+      }
+    });
+
+    // Listen for recurring transaction sync
+    socket.on('sync_recurring', (data) => {
+      const { userId, syncedCount } = data;
+      finance.to(`user_${userId}`).emit('recurring_synced', {
+        syncedCount,
+        message: `${syncedCount} recurring transactions processed`,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Handle disconnection
+    socket.on('disconnect', () => {
+      console.log(`[Socket] User disconnected: ${socket.id}`);
+    });
+  });
+
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Database: ${DB}`);
+    console.log('✓ WebSocket listening on /finance namespace');
     console.log('✓ Backend ready for connections');
   });
   
@@ -702,13 +848,15 @@ app.get('/api/wallets', requireAuth, (req, res) => {
 });
 
 app.post('/api/wallets', requireAuth, (req, res) => {
-  const { name, color, icon } = req.body || {};
+  const { name, color, icon, initialBalance } = req.body || {};
   if (!name) return res.status(400).json({ message: 'Wallet name is required' });
+
+  const balance = typeof initialBalance === 'number' && initialBalance >= 0 ? initialBalance : 0;
 
   const db = openDb();
   db.run(
-    'INSERT INTO wallets(userId, name, color, icon, createdAt) VALUES (?, ?, ?, ?, ?)',
-    [req.auth.userId, name, color || '#6e57ff', icon || '👛', new Date().toISOString()],
+    'INSERT INTO wallets(userId, name, color, icon, initialBalance, createdAt) VALUES (?, ?, ?, ?, ?, ?)',
+    [req.auth.userId, name, color || '#6e57ff', icon || '👛', balance, new Date().toISOString()],
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
@@ -718,13 +866,15 @@ app.post('/api/wallets', requireAuth, (req, res) => {
 });
 
 app.put('/api/wallets/:id', requireAuth, (req, res) => {
-  const { name, color, icon } = req.body || {};
+  const { name, color, icon, initialBalance } = req.body || {};
   if (!name) return res.status(400).json({ message: 'Wallet name is required' });
+
+  const balance = typeof initialBalance === 'number' && initialBalance >= 0 ? initialBalance : 0;
 
   const db = openDb();
   db.run(
-    'UPDATE wallets SET name = ?, color = ?, icon = ? WHERE id = ? AND userId = ?',
-    [name, color, icon, req.params.id, req.auth.userId],
+    'UPDATE wallets SET name = ?, color = ?, icon = ?, initialBalance = ? WHERE id = ? AND userId = ?',
+    [name, color, icon, balance, req.params.id, req.auth.userId],
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
@@ -777,6 +927,7 @@ app.post('/api/transactions', requireAuth, (req, res) => {
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
+      emitBudgetAlertsForUser(req.auth.userId, date);
       res.status(201).json({ id: this.lastID, affected: this.changes });
     }
   );
@@ -792,6 +943,7 @@ app.put('/api/transactions/:id', requireAuth, (req, res) => {
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
+      emitBudgetAlertsForUser(req.auth.userId, date);
       res.status(200).json({ ok: true, affected: this.changes });
     }
   );
@@ -899,6 +1051,7 @@ app.put('/api/recurring-transactions/:id', requireAuth, (req, res) => {
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
+      emitBudgetAlertsForUser(req.auth.userId, nextRunDate);
       res.status(200).json({ ok: true, affected: this.changes });
     }
   );
@@ -983,6 +1136,7 @@ app.post('/api/budgets', requireAuth, (req, res) => {
     function(err) {
       closeDb(db);
       if (err) return res.status(500).json({ message: 'Database error' });
+      emitBudgetAlertsForUser(req.auth.userId, month + '-01');
       res.status(200).json({ ok: true, affected: this.changes });
     }
   );

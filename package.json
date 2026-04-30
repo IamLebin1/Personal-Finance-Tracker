@@ -6,7 +6,7 @@
     "android": "react-native run-android",
     "ios": "react-native run-ios",
     "lint": "eslint .",
-    "start": "react-native start",
+    "start": "react-native start --port 8082",
     "test": "jest"
   },
   "dependencies": {
@@ -31,6 +31,7 @@
     "react-native-worklets": "^0.8.1",
     "react-native-worklets-core": "^1.6.3",
     "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "sqlite": "^5.1.1",
     "sqlite3": "^6.0.1"
   },

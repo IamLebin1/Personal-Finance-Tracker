@@ -12,10 +12,12 @@ import ProfileDetails from '../screens/ProfileDetails';
 import SecuritySettings from '../screens/SecuritySettings';
 import Notifications from '../screens/Notifications';
 import BudgetScreen from '../screens/BudgetScreen';
+import WalletManagement from '../screens/WalletManagement';
 import OnboardingSetup from '../screens/OnboardingSetup';
 import RecurringTransactions from '../screens/RecurringTransactions';
 import HelpSupport from '../screens/HelpSupport';
 import PrivacyPolicy from '../screens/PrivacyPolicy';
+import CategoryManagement from '../screens/CategoryManagement';
 import type { Transaction } from '../types/transaction';
 import { loadAuthSession } from '../services/authSession';
 import { hasCompletedOnboarding, setOnboardingCompleted } from '../services/onboardingService';
@@ -34,8 +36,10 @@ export type RootStackParamList = {
   SecuritySettings: undefined;
   Notifications: undefined;
   Budget: undefined;
-  RecurringTransactions: undefined;
+  WalletManagement: undefined;
+  CategoryManagement: undefined;
   OnboardingSetup: undefined;
+  RecurringTransactions: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -143,9 +147,14 @@ export default function RootStackNavigator() {
           options={{ headerShown: false }}
         />
         <Stack.Screen
-          name="RecurringTransactions"
-          component={RecurringTransactions}
-          options={{ title: 'Recurring Bills' }}
+          name="WalletManagement"
+          component={WalletManagement}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="CategoryManagement"
+          component={CategoryManagement}
+          options={{ headerShown: false }}
         />
         <Stack.Screen
           name="OnboardingSetup"
@@ -161,6 +170,11 @@ export default function RootStackNavigator() {
           name="PrivacyPolicy"
           component={PrivacyPolicy}
           options={{ title: 'Privacy Policy' }}
+        />
+        <Stack.Screen
+          name="RecurringTransactions"
+          component={RecurringTransactions}
+          options={{ headerShown: false }}
         />
       </Stack.Navigator>
     )
