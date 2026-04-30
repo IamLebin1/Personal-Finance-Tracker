@@ -562,11 +562,7 @@ function ensureTables(onDone) {
         `);
         // Seed default wallet for each user if not exists
         db.all('SELECT id FROM users', [], (userErr, userRows) => {
-        if (userErr || !userRows || userRows.length === 0) {
-          finish();
-          return;
-        }
-
+        if (!userErr && userRows && userRows.length > 0) {
           let userPending = userRows.length;
           userRows.forEach(user => {
             db.get('SELECT id FROM wallets WHERE userId = ? LIMIT 1', [user.id], (walletErr, walletRow) => {
@@ -578,23 +574,21 @@ function ensureTables(onDone) {
                     if (!insertErr) {
                       const defaultWalletId = this.lastID;
                       // Update existing transactions for this user that have NULL walletId
-                      db.run(
-                        'UPDATE transactions SET walletId = ? WHERE userId = ? AND walletId IS NULL',
-                        [defaultWalletId, user.id]
-                      );
+                      db.run('UPDATE transactions SET walletId = ? WHERE userId = ? AND walletId IS NULL', [defaultWalletId, user.id]);
                     }
                     userPending -= 1;
                     if (userPending === 0) finish();
                   }
                 );
               } else {
-                // Wallet already exists (or lookup failed); continue seeding.
                 userPending -= 1;
                 if (userPending === 0) finish();
               }
-            }
-          );
-        });
+            });
+          });
+        } else {
+          finish();
+        }
       });
 
       function finish() {
@@ -622,7 +616,6 @@ function ensureTables(onDone) {
           }
         });
       }
-      });
     });
       });
   });
