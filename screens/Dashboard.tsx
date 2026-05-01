@@ -367,26 +367,7 @@ function Dashboard({ navigation }: { navigation: any }) {
           </View>
         )}
 
-        {/* Real-time Notification Display */}
-        {notifications.map((notification) => (
-          <View
-            key={notification.id}
-            style={[
-              styles.notificationBanner,
-              {
-                backgroundColor: notification.type === 'budget_alert' ? colors.danger + '20' : colors.success + '20',
-                borderLeftColor: notification.type === 'budget_alert' ? colors.danger : colors.success,
-              },
-            ]}
-          >
-            <Text style={[styles.notificationTitle, { color: colors.text }]}>
-              {notification.type === 'budget_alert' ? '⚠️ ' : '✓ '}{notification.title}
-            </Text>
-            <Text style={[styles.notificationMessage, { color: colors.textMuted }]}>
-              {notification.message}
-            </Text>
-          </View>
-        ))}
+
 
         <View style={styles.wealthSection}>
           <Animated.View style={[styles.balanceCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }], backgroundColor: colors.card, borderColor: colors.cardBorder }]}>

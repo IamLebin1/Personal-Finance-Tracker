@@ -45,6 +45,7 @@ class SocketService {
   private recurringListeners: Set<NotificationListener> = new Set();
   private connectListeners: Set<() => void> = new Set();
   private disconnectListeners: Set<() => void> = new Set();
+  private missedBudgetAlerts: BudgetAlert[] = [];
 
   connect(serverUrl: string = config.apiBaseUrl): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -65,6 +66,7 @@ class SocketService {
           reconnectionDelay: 1000,
           reconnectionDelayMax: 5000,
           reconnectionAttempts: 5,
+          forceNew: true,
         });
 
         this.socket.on('connect', () => {
@@ -89,7 +91,11 @@ class SocketService {
         // Listen for budget alerts
         this.socket.on('budget_alert', (data: BudgetAlert) => {
           console.log('[Socket] Budget alert received:', data);
-          this.budgetAlertListeners.forEach(listener => listener(data));
+          if (this.budgetAlertListeners.size === 0) {
+            this.missedBudgetAlerts.push(data);
+          } else {
+            this.budgetAlertListeners.forEach(listener => listener(data));
+          }
         });
 
         // Listen for recurring sync notifications
@@ -154,6 +160,14 @@ class SocketService {
   subscribeToBudgetAlerts(listener: NotificationListener): () => void {
     this.budgetAlertListeners.add(listener);
     console.log('[Socket] Budget alert listener added');
+
+    // Flush any missed alerts to the new listener
+    while (this.missedBudgetAlerts.length > 0) {
+      const alert = this.missedBudgetAlerts.shift();
+      if (alert) {
+        listener(alert);
+      }
+    }
 
     // Return unsubscribe function
     return () => {

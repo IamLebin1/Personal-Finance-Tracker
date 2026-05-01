@@ -47,7 +47,7 @@ function App() {
     void (async () => {
       await loadAuthSession();
       await loadCurrencyPreference();
-      await startCurrencyRateFeed();
+      startCurrencyRateFeed().catch(console.warn);
       await socketService.connect();
       startTransactionSync();
     })().catch((error) => {

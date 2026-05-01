@@ -13,12 +13,12 @@ import {
 } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../navigation/RootStackNavigator';
 import { config } from '../config/appConfig';
 import { setAuthSession } from '../services/authSession';
 import { DarkPalette } from '../constants/theme';
 import { hasCompletedOnboarding, setOnboardingCompleted } from '../services/onboardingService';
 import { getWallets } from '../services/walletApi';
+import socketService from '../services/socketService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
@@ -126,6 +126,10 @@ const LoginScreen = ({ navigation, route }: Props) => {
           username: loggedInUsername,
         });
 
+        // Reconnect socket to emit user_login event
+        socketService.disconnect();
+        await socketService.connect();
+
         Alert.alert('Success', 'Login successful.');
         setPassword('');
         if (!rememberMe) {
@@ -172,7 +176,7 @@ const LoginScreen = ({ navigation, route }: Props) => {
               <View style={styles.logoIcon}>
                 <Text style={styles.logoText}>👛</Text>
               </View>
-              <Text style={styles.brandTitle}>Finance</Text>
+              <Text style={styles.brandTitle}>FINANCE TRACKER</Text>
             </View>
             <TouchableOpacity style={styles.helpButton}>
               <Text style={styles.helpText}>Help</Text>

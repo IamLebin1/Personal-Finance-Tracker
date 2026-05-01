@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import socketService from './socketService';
 
@@ -14,6 +15,7 @@ export interface Notification {
 }
 
 const NOTIFICATIONS_KEY = '@app_notifications';
+const processedAlertKeys = new Set<string>();
 
 async function loadStoredNotifications(): Promise<Notification[]> {
   try {
@@ -71,15 +73,45 @@ export function useNotifications() {
     // Subscribe to budget alerts
     const unsubscribeBudget = socketService.subscribeToBudgetAlerts((data) => {
       const category = 'category' in data ? data.category : 'Budget';
+      const alertKey = `${category}-${data.spent}`;
 
-      addNotification({
-        id: Date.now().toString(),
-        type: 'budget_alert',
-        title: `${category} Budget Alert`,
-        message: data.message,
-        category,
-        data,
-        timestamp: Date.now(),
+      if (processedAlertKeys.has(alertKey)) {
+        return; // Handled by another instance of this hook
+      }
+      processedAlertKeys.add(alertKey);
+
+      setNotifications((prev) => {
+        const isDuplicate = prev.some(n => 
+          n.type === 'budget_alert' && 
+          n.category === category && 
+          n.data?.spent === data.spent
+        );
+
+        if (isDuplicate) {
+          return prev;
+        }
+
+        setTimeout(() => {
+          Alert.alert(
+            `${category} Budget Alert`,
+            data.message,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'OK' }
+            ]
+          );
+        }, 0);
+
+        return [{
+          id: Date.now().toString(),
+          type: 'budget_alert',
+          title: `${category} Budget Alert`,
+          message: data.message,
+          category,
+          data,
+          timestamp: Date.now(),
+          isRead: false,
+        }, ...prev];
       });
     });
 

@@ -155,7 +155,7 @@ function emitBudgetAlertsForUser(userId, dateValue) {
      FROM budgets b
      LEFT JOIN transactions t
        ON t.userId = b.userId
-      AND t.category = b.category
+      AND (b.category = 'Total' OR t.category = b.category)
       AND substr(t.date, 1, 7) = b.month
      WHERE b.userId = ? AND b.month = ?
      GROUP BY b.category, b.amount`,
@@ -170,14 +170,26 @@ function emitBudgetAlertsForUser(userId, dateValue) {
       rows.forEach(row => {
         const budgetAmount = Number(row.budgetAmount) || 0;
         const actualAmount = Number(row.actualAmount) || 0;
-        if (budgetAmount > 0 && actualAmount >= budgetAmount * 0.9) {
-          financeNamespace.to(`user_${userId}`).emit('budget_alert', {
-            category: row.category,
-            spent: Math.round(actualAmount * 100) / 100,
-            limit: Math.round(budgetAmount * 100) / 100,
-            percentUsed: Math.round((actualAmount / budgetAmount) * 100),
-            message: `${row.category} budget is ${Math.round((actualAmount / budgetAmount) * 100)}% used for ${monthKey}`,
-          });
+        const percentUsed = (actualAmount / budgetAmount) * 100;
+        
+        if (budgetAmount > 0) {
+          if (percentUsed > 100) {
+            financeNamespace.to(`user_${userId}`).emit('budget_alert', {
+              category: row.category,
+              spent: Math.round(actualAmount * 100) / 100,
+              limit: Math.round(budgetAmount * 100) / 100,
+              percentUsed: Math.round(percentUsed),
+              message: `Alert: You have EXCEEDED your ${row.category} budget for ${monthKey}!`,
+            });
+          } else if (percentUsed >= 90) {
+            financeNamespace.to(`user_${userId}`).emit('budget_alert', {
+              category: row.category,
+              spent: Math.round(actualAmount * 100) / 100,
+              limit: Math.round(budgetAmount * 100) / 100,
+              percentUsed: Math.round(percentUsed),
+              message: `Warning: ${row.category} budget is ${Math.round(percentUsed)}% used for ${monthKey}`,
+            });
+          }
         }
       });
     }
@@ -681,10 +693,13 @@ function startServer() {
 
     // Receive user login event
     socket.on('user_login', (data) => {
-      const userId = data.userId;
+      const userId = Number(data.userId);
       // Join user to their own room for private notifications
       socket.join(`user_${userId}`);
       console.log(`[Socket] User ${userId} joined room`);
+      
+      // Detect and notify if user has exceeded monthly budget
+      emitBudgetAlertsForUser(userId, new Date().toISOString());
     });
 
     // Listen for budget check requests
@@ -692,14 +707,21 @@ function startServer() {
       const { userId, category, spent, limit } = data;
       const percentUsed = (spent / limit) * 100;
       
-      if (percentUsed >= 90) {
-        // Emit budget alert back to specific user
+      if (percentUsed > 100) {
         finance.to(`user_${userId}`).emit('budget_alert', {
           category,
           spent: Math.round(spent * 100) / 100,
           limit: Math.round(limit * 100) / 100,
           percentUsed: Math.round(percentUsed),
-          message: `You have used ${Math.round(percentUsed)}% of your ${category} budget`
+          message: `Alert: You have EXCEEDED your ${category} budget!`
+        });
+      } else if (percentUsed >= 90) {
+        finance.to(`user_${userId}`).emit('budget_alert', {
+          category,
+          spent: Math.round(spent * 100) / 100,
+          limit: Math.round(limit * 100) / 100,
+          percentUsed: Math.round(percentUsed),
+          message: `Warning: You have used ${Math.round(percentUsed)}% of your ${category} budget`
         });
       }
     });
