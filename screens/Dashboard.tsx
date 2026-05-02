@@ -326,9 +326,21 @@ function Dashboard({ navigation }: { navigation: any }) {
       <StatusBar barStyle={colors.statusBar} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Animated.View style={[styles.headerRow, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-          <View>
-            <Text style={[styles.greetingText, { color: colors.textMuted }]}>{getDaytimeGreeting()}</Text>
-            <Text style={[styles.userName, { color: colors.text }]}>{displayName}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Pressable 
+              onPress={() => navigation.openDrawer()}
+              style={[styles.iconButton, { marginRight: 12, backgroundColor: colors.card }]}
+            >
+              <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <Path d="M3 12h18" />
+                <Path d="M3 6h18" />
+                <Path d="M3 18h18" />
+              </Svg>
+            </Pressable>
+            <View>
+              <Text style={[styles.greetingText, { color: colors.textMuted }]}>{getDaytimeGreeting()}</Text>
+              <Text style={[styles.userName, { color: colors.userName || colors.text }]}>{displayName}</Text>
+            </View>
           </View>
           <View style={styles.headerActions}>
             <Pressable 

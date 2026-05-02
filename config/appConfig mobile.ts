@@ -15,8 +15,8 @@ export const config = {
   apiBaseUrl:
     process.env.API_BASE_URL ??
     Platform.select({
-      android: 'http://192.168.100.7:5001',
-      ios: 'http://192.168.0.6:5001',
+      android: 'http://172.21.0.1:5001',
+      ios: 'http://172.21.0.1:5001',
       default: 'http://localhost:5001',
     }),
 };
