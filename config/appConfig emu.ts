@@ -9,7 +9,7 @@ export const config = {
   appMode,
   isLocalMode: appMode === 'local',
   demoUserId: process.env.DEFAULT_USER_ID ?? 'demo-user',
-  currencyCode: process.env.DEFAULT_CURRENCY_CODE ?? 'USD',
+  currencyCode: process.env.DEFAULT_CURRENCY_CODE ?? 'MYR',
   sqliteDbName: process.env.SQLITE_DB_NAME ?? 'db/finance_tracker.sqlite',
   sqliteSeedDemoData: (process.env.SQLITE_SEED_DEMO ?? 'true') === 'true',
   apiBaseUrl:

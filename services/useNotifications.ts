@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Platform, Alert } from 'react-native';
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import socketService from './socketService';
 
@@ -16,6 +16,13 @@ export interface Notification {
 
 const NOTIFICATIONS_KEY = '@app_notifications';
 const processedAlertKeys = new Set<string>();
+const storeListeners = new Set<() => void>();
+
+let notificationsStore: Notification[] = [];
+let isConnectedStore = false;
+let isHydratedStore = false;
+let isInitializingStore = false;
+let hasSocketSubscriptions = false;
 
 async function loadStoredNotifications(): Promise<Notification[]> {
   try {
@@ -40,126 +47,154 @@ async function saveStoredNotifications(notifications: Notification[]): Promise<v
   }
 }
 
-export function useNotifications() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [isConnected, setIsConnected] = useState(false);
-  const [isHydrated, setIsHydrated] = useState(false);
+function emitStoreChange(): void {
+  storeListeners.forEach(listener => listener());
+}
 
-  useEffect(() => {
-    void loadStoredNotifications().then((stored) => {
-      setNotifications(stored);
-      setIsHydrated(true);
-    });
-  }, []);
+function setNotificationsStore(
+  next: Notification[] | ((prev: Notification[]) => Notification[]),
+): void {
+  notificationsStore = typeof next === 'function'
+    ? (next as (prev: Notification[]) => Notification[])(notificationsStore)
+    : next;
 
-  useEffect(() => {
-    if (!isHydrated) {
+  if (isHydratedStore) {
+    void saveStoredNotifications(notificationsStore);
+  }
+
+  emitStoreChange();
+}
+
+function setIsConnectedStore(next: boolean): void {
+  if (isConnectedStore === next) return;
+  isConnectedStore = next;
+  emitStoreChange();
+}
+
+function setupSocketSubscriptions(): void {
+  if (hasSocketSubscriptions) return;
+  hasSocketSubscriptions = true;
+
+  socketService.subscribeToBudgetAlerts((data) => {
+    const category = 'category' in data ? data.category : 'Budget';
+    const spent = 'spent' in data ? data.spent : undefined;
+    const alertKey = `${category}-${String(spent ?? '')}`;
+
+    if (processedAlertKeys.has(alertKey)) {
       return;
     }
+    processedAlertKeys.add(alertKey);
 
-    void saveStoredNotifications(notifications);
-  }, [isHydrated, notifications]);
+    let didInsert = false;
+    setNotificationsStore((prev) => {
+      const isDuplicate = prev.some(n =>
+        n.type === 'budget_alert' &&
+        n.category === category &&
+        n.data?.spent === spent
+      );
 
-  const addNotification = (notification: Omit<Notification, 'isRead'>) => {
-    const nextNotification: Notification = {
-      ...notification,
-      isRead: false,
-    };
-
-    setNotifications((prev) => [nextNotification, ...prev]);
-  };
-
-  useEffect(() => {
-    // Subscribe to budget alerts
-    const unsubscribeBudget = socketService.subscribeToBudgetAlerts((data) => {
-      const category = 'category' in data ? data.category : 'Budget';
-      const alertKey = `${category}-${data.spent}`;
-
-      if (processedAlertKeys.has(alertKey)) {
-        return; // Handled by another instance of this hook
+      if (isDuplicate) {
+        return prev;
       }
-      processedAlertKeys.add(alertKey);
 
-      setNotifications((prev) => {
-        const isDuplicate = prev.some(n => 
-          n.type === 'budget_alert' && 
-          n.category === category && 
-          n.data?.spent === data.spent
-        );
-
-        if (isDuplicate) {
-          return prev;
-        }
-
-        setTimeout(() => {
-          Alert.alert(
-            `${category} Budget Alert`,
-            data.message,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'OK' }
-            ]
-          );
-        }, 0);
-
-        return [{
-          id: Date.now().toString(),
-          type: 'budget_alert',
-          title: `${category} Budget Alert`,
-          message: data.message,
-          category,
-          data,
-          timestamp: Date.now(),
-          isRead: false,
-        }, ...prev];
-      });
-    });
-
-    // Subscribe to recurring sync notifications
-    const unsubscribeRecurring = socketService.subscribeToRecurringSync((data) => {
-      addNotification({
+      didInsert = true;
+      return [{
         id: Date.now().toString(),
-        type: 'recurring_synced',
-        title: 'Recurring Transactions',
+        type: 'budget_alert',
+        title: `${category} Budget Alert`,
         message: data.message,
+        category,
         data,
         timestamp: Date.now(),
-      });
+        isRead: false,
+      }, ...prev];
     });
 
-    // Subscribe to connection status
-    const unsubscribeConnect = socketService.onConnect(() => {
-      setIsConnected(true);
-      console.log('[Notifications] Connected to server');
-    });
+    if (didInsert) {
+      setTimeout(() => {
+        Alert.alert(
+          `${category} Budget Alert`,
+          data.message,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'OK' }
+          ]
+        );
+      }, 0);
+    }
+  });
 
-    const unsubscribeDisconnect = socketService.onDisconnect(() => {
-      setIsConnected(false);
-      console.log('[Notifications] Disconnected from server');
-    });
+  socketService.subscribeToRecurringSync((data) => {
+    setNotificationsStore((prev) => [{
+      id: Date.now().toString(),
+      type: 'recurring_synced',
+      title: 'Recurring Transactions',
+      message: data.message,
+      data,
+      timestamp: Date.now(),
+      isRead: false,
+    }, ...prev]);
+  });
+
+  socketService.onConnect(() => {
+    setIsConnectedStore(true);
+    console.log('[Notifications] Connected to server');
+  });
+
+  socketService.onDisconnect(() => {
+    setIsConnectedStore(false);
+    console.log('[Notifications] Disconnected from server');
+  });
+}
+
+async function initializeStore(): Promise<void> {
+  if (isHydratedStore || isInitializingStore) {
+    return;
+  }
+
+  isInitializingStore = true;
+  try {
+    notificationsStore = await loadStoredNotifications();
+    isHydratedStore = true;
+    emitStoreChange();
+  } finally {
+    isInitializingStore = false;
+    setupSocketSubscriptions();
+  }
+}
+
+export function useNotifications() {
+  const [notifications, setNotifications] = useState<Notification[]>(notificationsStore);
+  const [isConnected, setIsConnected] = useState(isConnectedStore);
+
+  useEffect(() => {
+    const syncFromStore = () => {
+      setNotifications(notificationsStore);
+      setIsConnected(isConnectedStore);
+    };
+
+    storeListeners.add(syncFromStore);
+    void initializeStore();
 
     return () => {
-      unsubscribeBudget();
-      unsubscribeRecurring();
-      unsubscribeConnect();
-      unsubscribeDisconnect();
+      storeListeners.delete(syncFromStore);
     };
   }, []);
 
   const dismissNotification = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    setNotificationsStore((prev) => prev.filter((n) => n.id !== id));
   };
 
   const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    setNotificationsStore((prev) => prev.map((n) => ({ ...n, isRead: true })));
   };
 
   const markAsRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
+    setNotificationsStore((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
   };
 
   const clearAllNotifications = () => {
-    setNotifications([]);
+    setNotificationsStore([]);
   };
 
   const unreadCount = notifications.filter((item) => !item.isRead).length;

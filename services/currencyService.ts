@@ -24,13 +24,14 @@ type AlphaVantageRatePayload = {
 const CURRENCY_KEY = '@preferred_currency';
 const CACHED_RATE_KEY = '@cached_usd_myr_rate';
 const DEFAULT_USD_TO_MYR_RATE = 4.7;
+const DEFAULT_CURRENCY_CODE: CurrencyCode = config.currencyCode?.toUpperCase() === 'USD' ? 'USD' : 'MYR';
 const ALPHA_VANTAGE_API_KEY = 'PDPVJNHOMEBYB4B5';
 const ALPHA_VANTAGE_RATE_URL =
   `https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=USD&to_currency=MYR&apikey=${ALPHA_VANTAGE_API_KEY}`;
 const POLL_INTERVAL_MS = 700000;
 
 let state: CurrencyState = {
-  code: (config.currencyCode?.toUpperCase() === 'MYR' ? 'MYR' : 'USD') as CurrencyCode,
+  code: DEFAULT_CURRENCY_CODE,
   usdToMyrRate: DEFAULT_USD_TO_MYR_RATE,
   socketConnected: false,
   lastUpdatedAt: null,
@@ -52,7 +53,10 @@ function setState(partial: Partial<CurrencyState>): void {
 }
 
 function parseCurrencyCode(value: string | null | undefined): CurrencyCode {
-  return String(value || '').toUpperCase() === 'MYR' ? 'MYR' : 'USD';
+  const normalized = String(value || '').toUpperCase();
+  if (normalized === 'USD') return 'USD';
+  if (normalized === 'MYR') return 'MYR';
+  return DEFAULT_CURRENCY_CODE;
 }
 
 export function subscribeCurrency(listener: Listener): () => void {
