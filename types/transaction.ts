@@ -20,6 +20,7 @@ export interface Transaction {
   receiptUrl?: string;
   userId: string;
   walletId?: string;
+  destinationWalletId?: string; // For transfers
 }
 
 export type CreateTransactionInput = Omit<Transaction, 'id'>;

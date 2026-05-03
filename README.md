@@ -1,6 +1,30 @@
 # 💸 Personal Finance Tracker
 
+<<<<<<< HEAD
 A premium, dark-themed React Native application for tracking wealth, expenses, and financial insights. This application features a robust **Local-First architecture** with SQLite persistence, real-time **WebSocket** notifications, and a dedicated Node.js backend.
+=======
+A premium, dark-themed React Native application for tracking wealth, expenses, and financial insights. Features smooth animations, data visualization, and a secure backend.
+
+# IMPORTANT:
+- MUST EDIT `config/appConfig.ts` to point to your local backend URL (e.g., `http://10.0.2.2:5001`) for Android Emulators.
+- The backend must be running (`node db/service.js`) for the app to function properly.
+- Do not start `db/tracker.js` or `db/user.js` for the main app; they do not include the full auth + socket backend.
+- Run `npm run android` to keep your app/device on 8081
+- Run `npm start` to start the Metro bundler on 8082 (websocket server )
+
+
+## 🚀 Features
+
+- **Dashboard**: Real-time balance overview with interactive Income/Expense cards.
+- **Recent Activity**: Modern transaction list with detailed date formatting and descending sorting.
+- **Financial Insights**: 
+  - Bezier Curve spending graph (Newest data on the left).
+  - Monthly spending trend indicators.
+  - Interactive calendar showing daily net surplus/expense totals.
+- **Transaction Management**: Add transactions with a built-in calculator and circular reveal transition.
+- **Profile Management**: Functional personal details editor (username, email, phone) synced with the backend.
+- **Smooth Transitions**: Optimized with `InteractionManager` for a lag-free experience.
+>>>>>>> 9a4c65567aaa846895ca3d1b324e3db86a154a38
 
 ---
 
@@ -31,8 +55,15 @@ This project uses modern React Native versions. Use the `--legacy-peer-deps` fla
 npm install --legacy-peer-deps
 ```
 
+<<<<<<< HEAD
 ### 3. Environment Configuration
 Copy the sample environment file to create your local `.env`:
+=======
+If you run into dependency issues, make sure to install the packages before starting the app or backend.
+
+### 3. Setup Configuration
+The app requires a local configuration file. Copy the example to create your own:
+>>>>>>> 9a4c65567aaa846895ca3d1b324e3db86a154a38
 ```bash
 # Windows
 copy .env.sample .env

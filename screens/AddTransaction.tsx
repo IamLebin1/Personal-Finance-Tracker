@@ -90,21 +90,41 @@ function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function formatSafeAmount(digits: string): { display: string; value: number } {
-  const normalized = digits.replace(/[^\d.]/g, '');
+function formatSafeAmount(input: string): { display: string; value: number } {
+  let normalized = input.replace(/[^\d.]/g, '');
   if (!normalized) return { display: '0.00', value: 0 };
-  if (normalized.includes('.')) {
-      const parts = normalized.split('.');
-      const display = parts[0] + '.' + (parts[1] || '').slice(0, 2);
-      return { display, value: parseFloat(display) || 0 };
+  
+  // Prevent leading zeros (e.g., '05' -> '5')
+  if (normalized.length > 1 && normalized.startsWith('0') && normalized[1] !== '.') {
+    normalized = normalized.slice(1);
   }
-  const padded = normalized.padStart(3, '0');
-  const display = `${padded.slice(0, -2)}.${padded.slice(-2)}`;
-  return { display, value: parseFloat(display) || 0 };
+
+  const value = parseFloat(normalized) || 0;
+  
+  // If the user just pressed '.', show '0.'
+  if (normalized === '.') return { display: '0.', value: 0 };
+  
+  // If it ends with '.', keep it for the user to see they are typing decimals
+  if (normalized.endsWith('.')) {
+    return { display: normalized, value };
+  }
+
+  // Handle fractional part limit to 2 digits
+  if (normalized.includes('.')) {
+    const [int, dec] = normalized.split('.');
+    const limitedDec = dec.slice(0, 2);
+    const display = `${int}.${limitedDec}`;
+    return { display, value: parseFloat(display) || 0 };
+  }
+
+  // Standard integer input
+  return { display: normalized, value };
 }
 
 function formatFixedMoney(value: number): string {
   if (!Number.isFinite(value)) return '0.00';
+  // Avoid showing .00 if it's a clean integer during input? 
+  // Actually, for display purposes in the main transaction view, we want 2 decimals.
   return value.toFixed(2);
 }
 
@@ -122,7 +142,9 @@ export default function AddTransaction({ navigation, route }: Props) {
   const [availableCategories, setAvailableCategories] = useState<Category[]>(getCategoriesByType('expense'));
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
+  const [selectedDestinationWalletId, setSelectedDestinationWalletId] = useState<string | null>(null);
   const [isWalletModalVisible, setIsWalletModalVisible] = useState(false);
+  const [isDestinationWalletModalVisible, setIsDestinationWalletModalVisible] = useState(false);
   const [isCalculatorVisible, setIsCalculatorVisible] = useState(false);
   const [isCalculatorClosing, setIsCalculatorClosing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -206,6 +228,8 @@ export default function AddTransaction({ navigation, route }: Props) {
     return cells;
   }, [calendarMonth]);
   const selectedWallet = useMemo(() => wallets.find(w => String(w.id) === String(selectedWalletId)), [wallets, selectedWalletId]);
+  const selectedDestinationWallet = useMemo(() => wallets.find(w => String(w.id) === String(selectedDestinationWalletId)), [wallets, selectedDestinationWalletId]);
+  const isTransferDisabled = useMemo(() => wallets.length < 2, [wallets.length]);
   const indicatorWidth = useMemo(() => (tabsWidth - 8) / 3, [tabsWidth]);
   const indicatorTranslateX = useMemo(() => tabAnim.interpolate({
     inputRange: [0, 1, 2],
@@ -301,6 +325,13 @@ export default function AddTransaction({ navigation, route }: Props) {
 
   const onSave = async () => {
     if (parsedAmount <= 0) { Alert.alert('Invalid amount', 'Please enter a valid amount.'); return; }
+    
+    if (transactionType === 'transfer') {
+      if (wallets.length < 2) { Alert.alert('Insufficient wallets', 'You need at least 2 wallets to create a transfer. Please create another wallet first.'); return; }
+      if (!selectedDestinationWalletId) { Alert.alert('Select destination', 'Please select the destination wallet for this transfer.'); return; }
+      if (selectedWalletId === selectedDestinationWalletId) { Alert.alert('Invalid transfer', 'Source and destination wallets must be different.'); return; }
+    }
+    
     const session = getAuthSession();
     if (!session?.userId) { Alert.alert('Login required', 'Please sign in again.'); return; }
     setIsSaving(true);
@@ -318,6 +349,7 @@ export default function AddTransaction({ navigation, route }: Props) {
         receiptUrl: receiptUrl || '',
         userId: session.userId,
         walletId: selectedWalletId || undefined,
+        destinationWalletId: transactionType === 'transfer' ? selectedDestinationWalletId || undefined : undefined,
       });
       navigation.goBack();
     } catch (err: any) {
@@ -408,10 +440,18 @@ export default function AddTransaction({ navigation, route }: Props) {
             {tabsWidth > 0 && <Animated.View style={[styles.typeIndicator, { width: indicatorWidth, transform: [{ translateX: indicatorTranslateX }], backgroundColor: colors.primary }]} />}
             {transactionTypeTabs.map(tab => {
               const isActive = transactionType === tab.value;
+              const isDisabled = tab.value === 'transfer' && isTransferDisabled;
               return (
-                <Pressable key={tab.value} style={styles.typeTab} onPress={() => setTransactionType(tab.value)}>
-                  <Text style={styles.typeTabEmoji}>{tab.emoji}</Text>
-                  <Text style={[styles.typeTabLabel, { color: isActive ? '#fff' : colors.textMuted }]}>{tab.label}</Text>
+                <Pressable 
+                  key={tab.value} 
+                  style={[styles.typeTab, isDisabled && styles.typeTabDisabled]} 
+                  onPress={() => {
+                    if (!isDisabled) setTransactionType(tab.value);
+                    else Alert.alert('Insufficient wallets', 'You need at least 2 wallets to create a transfer. Please create another wallet first.');
+                  }}
+                >
+                  <Text style={[styles.typeTabEmoji, isDisabled && { opacity: 0.5 }]}>{tab.emoji}</Text>
+                  <Text style={[styles.typeTabLabel, { color: isActive ? '#fff' : colors.textMuted }, isDisabled && { opacity: 0.5 }]}>{tab.label}</Text>
                 </Pressable>
               );
             })}
@@ -437,6 +477,18 @@ export default function AddTransaction({ navigation, route }: Props) {
               </View>
             </View>
           </Pressable>
+
+          {transactionType === 'transfer' && (
+            <Pressable style={[styles.glassInputBox, { backgroundColor: colors.card, borderColor: colors.cardBorder }]} onPress={() => setIsDestinationWalletModalVisible(true)}>
+              <View>
+                <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Transfer To</Text>
+                <View style={styles.walletRow}>
+                  <Text style={styles.walletEmoji}>{selectedDestinationWallet?.icon || '👛'}</Text>
+                  <Text style={[styles.inputValue, { color: colors.text }]}>{selectedDestinationWallet?.name || 'Select Wallet'}</Text>
+                </View>
+              </View>
+            </Pressable>
+          )}
 
           <Pressable style={[styles.glassInputBox, { backgroundColor: colors.card, borderColor: colors.cardBorder }]} onPress={() => { setCalendarMonth(startOfMonth(selectedDate)); setIsCalendarVisible(true); }}>
             <View>
@@ -503,11 +555,36 @@ export default function AddTransaction({ navigation, route }: Props) {
               </View>
             </View>
             <View style={styles.keypadWrap}>
-              {flatKeypad.map(key => (
-                <Pressable key={key.id} style={[styles.keypadButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: colors.cardBorder }, key.variant === 'operator' && { backgroundColor: colors.primary + '15' }, key.variant === 'accent' && { backgroundColor: colors.primary + '10' }, key.variant === 'confirm' && { backgroundColor: colors.primary, shadowColor: colors.primary }]} onPress={() => onKeypadTap(key)}>
-                  <Text style={[styles.keypadButtonText, { color: colors.text }, key.variant === 'operator' && { color: colors.primary }, key.variant === 'accent' && { color: colors.primary }, key.variant === 'confirm' && { color: '#fff' }]}>{key.label}</Text>
-                </Pressable>
-              ))}
+              {flatKeypad.map(key => {
+                const isOperator = key.variant === 'operator' || key.variant === 'accent';
+                const isActiveOperator = isOperator && calcOperator === key.action.value;
+                
+                return (
+                  <Pressable 
+                    key={key.id} 
+                    style={[
+                      styles.keypadButton, 
+                      { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: colors.cardBorder }, 
+                      key.variant === 'operator' && { backgroundColor: colors.primary + '15' }, 
+                      key.variant === 'accent' && { backgroundColor: colors.primary + '10' }, 
+                      key.variant === 'confirm' && { backgroundColor: colors.primary, shadowColor: colors.primary },
+                      isActiveOperator && { backgroundColor: colors.primary, borderColor: colors.primary }
+                    ]} 
+                    onPress={() => onKeypadTap(key)}
+                  >
+                    <Text style={[
+                      styles.keypadButtonText, 
+                      { color: colors.text }, 
+                      key.variant === 'operator' && { color: colors.primary }, 
+                      key.variant === 'accent' && { color: colors.primary }, 
+                      key.variant === 'confirm' && { color: '#fff' },
+                      isActiveOperator && { color: '#fff' }
+                    ]}>
+                      {key.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </Animated.View>
         </View>
@@ -530,6 +607,36 @@ export default function AddTransaction({ navigation, route }: Props) {
                   {selectedWalletId === wallet.id && <View style={[styles.checkCircle, { backgroundColor: colors.primary }]}><Text style={styles.checkIcon}>✓</Text></View>}
                 </Pressable>
               ))}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={isDestinationWalletModalVisible} transparent animationType="slide" onRequestClose={() => setIsDestinationWalletModalVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setIsDestinationWalletModalVisible(false)}>
+          <View style={[styles.walletModalCard, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]} onStartShouldSetResponder={() => true}>
+            <View style={[styles.calculatorHandle, { backgroundColor: colors.textMuted + '40' }]} />
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Transfer To</Text>
+            <ScrollView
+              style={styles.walletList}
+              contentContainerStyle={styles.walletListContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {wallets.map(wallet => {
+                const isSourceWallet = wallet.id === selectedWalletId;
+                return (
+                  <Pressable 
+                    key={wallet.id} 
+                    style={[styles.walletItem, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: colors.cardBorder }, selectedDestinationWalletId === wallet.id && { backgroundColor: colors.primary + '15', borderColor: colors.primary }, isSourceWallet && { opacity: 0.5 }]} 
+                    disabled={isSourceWallet}
+                    onPress={() => { setSelectedDestinationWalletId(wallet.id); setIsDestinationWalletModalVisible(false); }}
+                  >
+                    <View style={[styles.walletIconBox, { backgroundColor: wallet.color + '20' }]}><Text style={styles.walletIcon}>{wallet.icon}</Text></View>
+                    <Text style={[styles.walletNameText, { color: colors.text }]}>{wallet.name}</Text>
+                    {selectedDestinationWalletId === wallet.id && <View style={[styles.checkCircle, { backgroundColor: colors.primary }]}><Text style={styles.checkIcon}>✓</Text></View>}
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           </View>
         </Pressable>
@@ -585,6 +692,7 @@ const styles = StyleSheet.create({
   typeTabsRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 28, padding: 4, flex: 1, maxWidth: 340, height: 58, position: 'relative', borderWidth: 1 },
   typeIndicator: { position: 'absolute', top: 4, bottom: 4, borderRadius: 24, elevation: 4, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
   typeTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  typeTabDisabled: { opacity: 0.5 },
   typeTabEmoji: { fontSize: 16, marginRight: 6 },
   typeTabLabel: { fontSize: 14, fontWeight: '700', letterSpacing: 0.3 },
   contentScroll: { flex: 1 },
