@@ -1,5 +1,5 @@
 import { config } from '../config/appConfig';
-import { getAuthSession } from './authSession';
+import { getAuthSession, loadAuthSession } from './authSession';
 
 export interface Budget {
   id: string;
@@ -15,11 +15,22 @@ export interface BudgetVsActual {
   actual: number;
 }
 
+async function getValidSession() {
+  let session = getAuthSession();
+  if (!session?.token) {
+    session = await loadAuthSession();
+  }
+  return session;
+}
+
 function getAuthHeaders(): Record<string, string> {
   const session = getAuthSession();
+  if (!session?.token) {
+    throw new Error('Please log in first');
+  }
   return {
     'Content-Type': 'application/json',
-    Authorization: session?.token ? `Bearer ${session.token}` : '',
+    Authorization: `Bearer ${session.token}`,
   };
 }
 
@@ -32,6 +43,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 export async function getBudgets(month: string): Promise<Budget[]> {
+  await getValidSession();
   const response = await fetch(`${config.apiBaseUrl}/api/budgets?month=${encodeURIComponent(month)}`, {
     headers: getAuthHeaders(),
   });
@@ -39,6 +51,7 @@ export async function getBudgets(month: string): Promise<Budget[]> {
 }
 
 export async function setBudget(category: string, month: string, amount: number): Promise<void> {
+  await getValidSession();
   const response = await fetch(`${config.apiBaseUrl}/api/budgets`, {
     method: 'POST',
     headers: getAuthHeaders(),
@@ -48,6 +61,7 @@ export async function setBudget(category: string, month: string, amount: number)
 }
 
 export async function getBudgetVsActual(month: string): Promise<BudgetVsActual[]> {
+  await getValidSession();
   const response = await fetch(`${config.apiBaseUrl}/api/analytics/budget-vs-actual?month=${encodeURIComponent(month)}`, {
     headers: getAuthHeaders(),
   });
