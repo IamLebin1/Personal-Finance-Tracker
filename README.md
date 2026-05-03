@@ -84,7 +84,7 @@ The backend server manages user authentication, data synchronization, and real-t
 
 ---
 
-## 📱 Phase 2: Running the Mobile App
+## Phase 2: Running the Mobile App
 
 ### 1. Start the Metro Bundler
 Metro is the JavaScript bundler for React Native. Keep this running in its own window.
