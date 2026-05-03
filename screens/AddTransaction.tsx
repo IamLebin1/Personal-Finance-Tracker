@@ -90,21 +90,41 @@ function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function formatSafeAmount(digits: string): { display: string; value: number } {
-  const normalized = digits.replace(/[^\d.]/g, '');
+function formatSafeAmount(input: string): { display: string; value: number } {
+  let normalized = input.replace(/[^\d.]/g, '');
   if (!normalized) return { display: '0.00', value: 0 };
-  if (normalized.includes('.')) {
-      const parts = normalized.split('.');
-      const display = parts[0] + '.' + (parts[1] || '').slice(0, 2);
-      return { display, value: parseFloat(display) || 0 };
+  
+  // Prevent leading zeros (e.g., '05' -> '5')
+  if (normalized.length > 1 && normalized.startsWith('0') && normalized[1] !== '.') {
+    normalized = normalized.slice(1);
   }
-  const padded = normalized.padStart(3, '0');
-  const display = `${padded.slice(0, -2)}.${padded.slice(-2)}`;
-  return { display, value: parseFloat(display) || 0 };
+
+  const value = parseFloat(normalized) || 0;
+  
+  // If the user just pressed '.', show '0.'
+  if (normalized === '.') return { display: '0.', value: 0 };
+  
+  // If it ends with '.', keep it for the user to see they are typing decimals
+  if (normalized.endsWith('.')) {
+    return { display: normalized, value };
+  }
+
+  // Handle fractional part limit to 2 digits
+  if (normalized.includes('.')) {
+    const [int, dec] = normalized.split('.');
+    const limitedDec = dec.slice(0, 2);
+    const display = `${int}.${limitedDec}`;
+    return { display, value: parseFloat(display) || 0 };
+  }
+
+  // Standard integer input
+  return { display: normalized, value };
 }
 
 function formatFixedMoney(value: number): string {
   if (!Number.isFinite(value)) return '0.00';
+  // Avoid showing .00 if it's a clean integer during input? 
+  // Actually, for display purposes in the main transaction view, we want 2 decimals.
   return value.toFixed(2);
 }
 
@@ -503,11 +523,36 @@ export default function AddTransaction({ navigation, route }: Props) {
               </View>
             </View>
             <View style={styles.keypadWrap}>
-              {flatKeypad.map(key => (
-                <Pressable key={key.id} style={[styles.keypadButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: colors.cardBorder }, key.variant === 'operator' && { backgroundColor: colors.primary + '15' }, key.variant === 'accent' && { backgroundColor: colors.primary + '10' }, key.variant === 'confirm' && { backgroundColor: colors.primary, shadowColor: colors.primary }]} onPress={() => onKeypadTap(key)}>
-                  <Text style={[styles.keypadButtonText, { color: colors.text }, key.variant === 'operator' && { color: colors.primary }, key.variant === 'accent' && { color: colors.primary }, key.variant === 'confirm' && { color: '#fff' }]}>{key.label}</Text>
-                </Pressable>
-              ))}
+              {flatKeypad.map(key => {
+                const isOperator = key.variant === 'operator' || key.variant === 'accent';
+                const isActiveOperator = isOperator && calcOperator === key.action.value;
+                
+                return (
+                  <Pressable 
+                    key={key.id} 
+                    style={[
+                      styles.keypadButton, 
+                      { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderColor: colors.cardBorder }, 
+                      key.variant === 'operator' && { backgroundColor: colors.primary + '15' }, 
+                      key.variant === 'accent' && { backgroundColor: colors.primary + '10' }, 
+                      key.variant === 'confirm' && { backgroundColor: colors.primary, shadowColor: colors.primary },
+                      isActiveOperator && { backgroundColor: colors.primary, borderColor: colors.primary }
+                    ]} 
+                    onPress={() => onKeypadTap(key)}
+                  >
+                    <Text style={[
+                      styles.keypadButtonText, 
+                      { color: colors.text }, 
+                      key.variant === 'operator' && { color: colors.primary }, 
+                      key.variant === 'accent' && { color: colors.primary }, 
+                      key.variant === 'confirm' && { color: '#fff' },
+                      isActiveOperator && { color: '#fff' }
+                    ]}>
+                      {key.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </Animated.View>
         </View>
