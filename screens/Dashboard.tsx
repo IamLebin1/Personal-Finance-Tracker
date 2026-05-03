@@ -403,9 +403,6 @@ function Dashboard({ navigation }: { navigation: any }) {
                   <Text style={[styles.periodText, { color: colors.textMuted }]}>{getPeriodLabel(periodMode, selectedPeriodMonth, selectedPeriodYear)}</Text>
                   <Text style={[styles.periodChevron, { color: colors.textMuted }]}>▼</Text>
                 </Pressable>
-                <Pressable style={[styles.eyeButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setIsBalanceVisible(prev => !prev)}>
-                  <Text style={styles.eyeButtonIcon}>{isBalanceVisible ? '👁️' : '🙈'}</Text>
-                </Pressable>
               </View>
               <View style={styles.balanceHeader}>
                 <Pressable style={[styles.walletSelector, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setIsWalletModalVisible(true)}>
@@ -416,7 +413,12 @@ function Dashboard({ navigation }: { navigation: any }) {
                   <Text style={[styles.trendText, { color: monthTrend < 0 ? colors.danger : colors.success }]}>{monthTrend >= 0 ? '↗' : '↘'} {formatTrendPercent(monthTrend)}</Text>
                 </View>
               </View>
-              <Text style={[styles.balanceValue, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>{isLoading ? '...' : (isBalanceVisible ? formatCurrency(totalBalance, true) : '••••••')}</Text>
+              <View style={styles.balanceValueRow}>
+                <Text style={[styles.balanceValue, { color: colors.text, flexShrink: 1 }]} numberOfLines={1} adjustsFontSizeToFit>{isLoading ? '...' : (isBalanceVisible ? formatCurrency(totalBalance, true) : '••••••')}</Text>
+                <Pressable style={[styles.eyeButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', marginLeft: 8 }]} onPress={() => setIsBalanceVisible(prev => !prev)}>
+                  <Text style={styles.eyeButtonIcon}>{isBalanceVisible ? '👁️' : '🙈'}</Text>
+                </Pressable>
+              </View>
             </View>
             <View style={[styles.cardDivider, { backgroundColor: colors.cardBorder }]} />
             <View style={styles.statsRow}>
@@ -727,6 +729,7 @@ const styles = StyleSheet.create({
   walletSelector: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
   balanceLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase' },
   walletChevron: { fontSize: 10, marginLeft: 6 },
+  balanceValueRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   balanceValue: { fontSize: 42, fontWeight: '800', letterSpacing: -0.5 },
   cardDivider: { height: 1, marginVertical: 18 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
