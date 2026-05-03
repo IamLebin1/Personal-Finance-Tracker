@@ -213,8 +213,12 @@ export default function WalletManagement({ navigation }: Props) {
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={colors.statusBar} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.text }]}>Wallets</Text>
+
+        <View style={[styles.headerTop, { borderBottomColor: colors.cardBorder }]}>
+          <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Text style={[styles.backIcon, { color: colors.text }]}>←</Text>
+          </Pressable>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Wallets</Text>
           <Pressable
             style={[styles.addBtn, { backgroundColor: colors.primary }]}
             onPress={() => {
@@ -399,6 +403,19 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 },
   header: { marginBottom: 24 },
+    headerTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingTop: Platform.OS === 'ios' ? 60 : 40,
+      paddingHorizontal: 20,
+      paddingBottom: 20,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      marginBottom: 24
+    },
+    headerTitle: { fontSize: 20, fontWeight: '800', flex: 1, textAlign: 'center' },
+    backBtn: { width: 40, height: 40, justifyContent: 'center' },
+    backIcon: { fontSize: 24, fontWeight: '300' },
   title: { fontSize: 28, fontWeight: '800', marginBottom: 16 },
   addBtn: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, alignSelf: 'flex-start' },
   addBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },

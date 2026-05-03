@@ -32,6 +32,7 @@ function mapTransactionRow(row: any): Transaction {
     receiptUrl: row.receiptUrl ?? '',
     userId: String(row.userId),
     walletId: row.walletId ? String(row.walletId) : undefined,
+    destinationWalletId: row.destinationWalletId ? String(row.destinationWalletId) : undefined,
   };
 }
 

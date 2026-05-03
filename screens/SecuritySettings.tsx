@@ -5,6 +5,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   ScrollView,
   Alert,
   ActivityIndicator,
@@ -190,6 +191,13 @@ export default function SecuritySettings() {
     >
       <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.headerTop}>
+          <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Text style={styles.backIcon}>←</Text>
+          </Pressable>
+          <Text style={styles.headerTitle}>Security & Credentials</Text>
+          <View style={styles.headerSpacer} />
+        </View>
         
         <Text style={styles.sectionTitle}>PIN Access</Text>
         <View style={styles.card}>
@@ -365,6 +373,34 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: 60,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Platform.OS === 'ios' ? 24 : 8,
+    paddingBottom: 18,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+  },
+  backIcon: {
+    color: '#f4f6ff',
+    fontSize: 24,
+    fontWeight: '300',
+  },
+  headerTitle: {
+    color: '#f4f6ff',
+    fontSize: 18,
+    fontWeight: '800',
+    flex: 1,
+    textAlign: 'center',
+  },
+  headerSpacer: {
+    width: 40,
+    height: 40,
   },
   sectionTitle: {
     color: '#8a90c6',

@@ -79,6 +79,7 @@ function toDbTransaction(input: CreateTransactionInput): CreateTransactionInput 
     note: input.note ?? '',
     receiptUrl: input.receiptUrl ?? '',
     walletId: input.walletId ?? undefined,
+    destinationWalletId: input.destinationWalletId ?? undefined,
   };
 }
 
@@ -93,6 +94,7 @@ function mapRowToTransaction(row: any): Transaction {
     receiptUrl: row.receiptUrl ?? '',
     userId: row.userId,
     walletId: row.walletId ?? undefined,
+    destinationWalletId: row.destinationWalletId ?? undefined,
   };
 }
 
@@ -181,18 +183,25 @@ async function ensureTables(): Promise<void> {
   const infoResult = await executeSql(`PRAGMA table_info(${TABLE_NAME})`);
   const infoRows = infoResult?.rows;
   let hasWalletId = false;
+  let hasDestinationWalletId = false;
   if (infoRows) {
     for (let index = 0; index < infoRows.length; index += 1) {
       const name = String(infoRows.item(index)?.name ?? '');
       if (name === 'walletId') {
         hasWalletId = true;
-        break;
+      }
+      if (name === 'destinationWalletId') {
+        hasDestinationWalletId = true;
       }
     }
   }
 
   if (!hasWalletId) {
     await executeSql(`ALTER TABLE ${TABLE_NAME} ADD COLUMN walletId TEXT`);
+  }
+
+  if (!hasDestinationWalletId) {
+    await executeSql(`ALTER TABLE ${TABLE_NAME} ADD COLUMN destinationWalletId TEXT`);
   }
 
   await executeSql(
