@@ -77,7 +77,8 @@ function isNetworkError(error: unknown): boolean {
   return message.includes('network request failed') || message.includes('failed to fetch');
 }
 
-function mergeLocalAndServerTransactions(localRows: Transaction[], serverRows: Transaction[], pendingChanges: Array<{ operationType: string; transactionId: string }>): Transaction[] {
+function mergeLocalAndServerTransactions(localRows: Transaction[], serverRows: Transaction[], 
+     pendingChanges: Array<{ operationType: string; transactionId: string }>): Transaction[] {
   const merged = new Map<string, Transaction>();
   const deletedIds = new Set(
     pendingChanges

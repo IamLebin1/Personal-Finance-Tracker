@@ -379,8 +379,9 @@ export default function RecurringTransactionsScreen() {
         {/* Form Modal for creating/editing recurring schedules */}
         <Modal visible={isFormModalVisible} transparent animationType="slide" onRequestClose={() => { setIsFormModalVisible(false); resetForm(); }}>
           <Pressable style={styles.modalOverlay} onPress={() => { setIsFormModalVisible(false); resetForm(); }}>
-            <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]} onPress={e => e.stopPropagation()}>
-              <View style={styles.sectionHeaderRow}>
+            <View style={[styles.modalCard, { backgroundColor: colors.card, borderTopColor: colors.cardBorder }]} onPress={e => e?.stopPropagation?.()}>
+              <ScrollView showsVerticalScrollIndicator={false} style={styles.formContent} contentContainerStyle={styles.formContentContainer}>
+                <View style={styles.sectionHeaderRow}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>{editingId ? 'Edit Schedule' : 'New Schedule'}</Text>
                 {editingId ? (
                   <Pressable onPress={resetForm}>
@@ -535,7 +536,7 @@ export default function RecurringTransactionsScreen() {
                 </View>
                 <Text style={[styles.walletChevron, { color: colors.textMuted }]}>›</Text>
               </Pressable>
-
+              </ScrollView>
               <Pressable
                 onPress={async () => {
                   await handleSubmit();
@@ -550,7 +551,7 @@ export default function RecurringTransactionsScreen() {
                   <Text style={styles.saveBtnText}>{editingId ? 'Update Schedule' : 'Create Schedule'}</Text>
                 )}
               </Pressable>
-            </Pressable>
+            </View>
           </Pressable>
         </Modal>
 
@@ -634,8 +635,10 @@ const styles = StyleSheet.create({
   walletPicker: { borderWidth: 1, borderRadius: 18, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   walletValue: { fontSize: 15, fontWeight: '800', marginTop: 2 },
   walletChevron: { fontSize: 24, fontWeight: '300' },
-  saveBtn: { minHeight: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  saveBtn: { minHeight: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  formContent: { flex: 1, paddingRight: 5 },
+  formContentContainer: { paddingBottom: 10 },
   loadingWrap: { paddingVertical: 28, alignItems: 'center' },
   emptyCard: { borderRadius: 24, borderWidth: 1, padding: 22, alignItems: 'center' },
   emptyIcon: { fontSize: 32, marginBottom: 10 },
@@ -658,8 +661,8 @@ const styles = StyleSheet.create({
   actionBtnText: { fontSize: 13, fontWeight: '800' },
   addRecurringBtn: { minHeight: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
   addRecurringText: { fontSize: 15, fontWeight: '800' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
-  modalCard: { width: '100%', maxHeight: '80%', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, borderTopWidth: 1 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end', alignItems: 'center' },
+  modalCard: { width: '100%', maxHeight: '85%', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, borderTopWidth: 1, flexDirection: 'column', flex: 1, justifyContent: 'space-between' },
   walletModal: { width: '100%', maxHeight: '70%', borderRadius: 28, borderWidth: 1, padding: 18 },
   modalTitle: { fontSize: 20, fontWeight: '800', marginBottom: 14, textAlign: 'center' },
   walletList: { maxHeight: 360 },
