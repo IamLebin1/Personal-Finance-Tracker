@@ -78,8 +78,8 @@ function isNetworkError(error: unknown): boolean {
   return message.includes('network request failed') || message.includes('failed to fetch');
 }
 
-function mergeLocalAndServerTransactions(localRows: Transaction[], serverRows: Transaction[], 
-     pendingChanges: Array<{ operationType: string; transactionId: string }>): Transaction[] {
+function mergeLocalAndServerTransactions(localRows: Transaction[], serverRows: Transaction[],
+  pendingChanges: Array<{ operationType: string; transactionId: string }>): Transaction[] {
   const merged = new Map<string, Transaction>();
   const deletedIds = new Set(
     pendingChanges
@@ -185,8 +185,15 @@ export async function syncPendingTransactions(): Promise<void> {
         if (isNetworkError(error)) {
           break;
         }
-        // Keep unsynced records if server rejects; stop to preserve operation order.
-        break;
+        const errorMessage = String((error as any)?.message ?? '');
+        // If it's an authorization error or a 5xx server error, we should stop and wait for it to be resolved.
+        if (errorMessage.includes('401') || errorMessage.includes('403') || errorMessage.includes('50')) {
+          break;
+        }
+        // If the server explicitly rejected the transaction (e.g. 400 Bad Request),
+        // we must drop the pending change to prevent it from permanently blocking the queue.
+        console.warn(`Dropping un-syncable transaction change ${change.id} due to error:`, error);
+        await removePendingTransactionChange(change.id);
       }
     }
   } finally {
