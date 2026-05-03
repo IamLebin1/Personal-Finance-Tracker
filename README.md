@@ -58,7 +58,10 @@ copy config\appConfig.example.ts config\appConfig.ts
 # Mac / Linux
 cp config/appConfig.example.ts config/appConfig.ts
 ```
-*Note: Open `config/appConfig.ts` and ensure `apiBaseUrl` points to `http://10.0.2.2:5001` for Android Emulators.*
+*Note: Open `config/appConfig.ts` and ensure `apiBaseUrl` points to the correct backend host for your device:
+- Android emulator: `http://10.0.2.2:5001`
+- Real Android device via USB: `http://localhost:5001` plus `adb reverse tcp:5001 tcp:5001`
+- Physical device over Wi-Fi: `http://<PC_LOCAL_IP>:5001`*
 
 ---
 

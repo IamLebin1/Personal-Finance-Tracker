@@ -1,25 +1,53 @@
 import React from 'react';
 import { createDrawerNavigator } from '@react-navigation/drawer';
-import RootStackNavigator from './RootStackNavigator';
+import MainTabsNavigator from './MainTabsNavigator';
+import ProfileDetails from '../screens/ProfileDetails';
+import SecuritySettings from '../screens/SecuritySettings';
+import HelpSupport from '../screens/HelpSupport';
+import { useTheme } from '../context/ThemeContext';
 
 export type DrawerParamList = {
-  Home: undefined;
+  MainTabs: undefined;
+  ProfileDetails: undefined;
+  SecuritySettings: undefined;
+  HelpSupport: undefined;
 };
 
 const Drawer = createDrawerNavigator<DrawerParamList>();
 
 export default function DrawerNavigator() {
+  const { colors } = useTheme();
+  
   return (
     <Drawer.Navigator
       screenOptions={{
         headerShown: false,
-        drawerStyle: { backgroundColor: '#111432' },
-        drawerActiveTintColor: '#8f79ff',
-        drawerInactiveTintColor: '#7f86c0',
+        drawerStyle: { backgroundColor: colors.card },
+        drawerActiveTintColor: colors.primary,
+        drawerInactiveTintColor: colors.textMuted,
         drawerLabelStyle: { fontWeight: '600' },
       }}
     >
-      <Drawer.Screen name="Home" component={RootStackNavigator} />
+      <Drawer.Screen 
+        name="MainTabs" 
+        component={MainTabsNavigator} 
+        options={{ title: 'Home' }}
+      />
+      <Drawer.Screen 
+        name="ProfileDetails" 
+        component={ProfileDetails} 
+        options={{ title: 'Profile Settings' }}
+      />
+      <Drawer.Screen 
+        name="SecuritySettings" 
+        component={SecuritySettings} 
+        options={{ title: 'Security' }}
+      />
+      <Drawer.Screen 
+        name="HelpSupport" 
+        component={HelpSupport} 
+        options={{ title: 'Help & Support' }}
+      />
     </Drawer.Navigator>
   );
 }

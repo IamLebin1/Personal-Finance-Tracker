@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import MainTabsNavigator from './MainTabsNavigator';
+import DrawerNavigator from './DrawerNavigator';
 import AddTransaction from '../screens/AddTransaction';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
@@ -108,7 +108,7 @@ export default function RootStackNavigator() {
         />
         <Stack.Screen
           name="MainTabs"
-          component={MainTabsNavigator}
+          component={DrawerNavigator}
           options={{ headerShown: false }}
         />
         <Stack.Screen
