@@ -194,14 +194,13 @@ function Dashboard({ navigation }: { navigation: any }) {
         const totalCategoryAmount = categoryData.reduce((s, c) => s + c.amount, 0);
         const categoryWithPercent = categoryData.map(c => ({ ...c, percentage: totalCategoryAmount > 0 ? (c.amount / totalCategoryAmount) * 100 : 0 }));
         
-        // Calculate balance including initial wallet balance
-        let totalWalletBalance = income - expenses;
-        if (periodMode === 'all' && !isAllWallets && currentWallet?.initialBalance) {
-          totalWalletBalance += currentWallet.initialBalance;
-        } else if (periodMode === 'all' && isAllWallets) {
-          // For all wallets view, sum initial balances from all wallets
-          const allInitialBalance = fetchedWallets.reduce((sum, w) => sum + (w.initialBalance || 0), 0);
-          totalWalletBalance += allInitialBalance;
+        // The header balance should reflect the stored wallet balance, not just the
+        // selected period's income/expenses summary.
+        let totalWalletBalance = 0;
+        if (isAllWallets) {
+          totalWalletBalance = Object.values(nextWalletBalances).reduce((sum, value) => sum + value, 0);
+        } else if (currentWallet) {
+          totalWalletBalance = nextWalletBalances[String(currentWallet.id)] ?? Number(currentWallet.initialBalance || 0);
         }
 
         setProfileData(profData);
@@ -373,11 +372,20 @@ function Dashboard({ navigation }: { navigation: any }) {
         </Animated.View>
 
         {/* WebSocket Connection Status and Notifications */}
-        {!isConnected && (
-          <View style={[styles.notificationBar, { backgroundColor: colors.warning }]}>
-            <Text style={styles.notificationText}>📡 Reconnecting...</Text>
-          </View>
-        )}
+        <View
+          style={[
+            styles.notificationBar,
+            {
+              backgroundColor: isConnected ? `${colors.success}20` : `${colors.danger}20`,
+              borderColor: isConnected ? `${colors.success}40` : `${colors.danger}40`,
+            },
+          ]}
+        >
+          <View style={[styles.connectionDot, { backgroundColor: isConnected ? colors.success : colors.danger }]} />
+          <Text style={[styles.notificationText, { color: isConnected ? colors.success : colors.danger }]}>
+            {isConnected ? 'Connected' : 'Reconnecting...'}
+          </Text>
+        </View>
 
 
 
@@ -414,7 +422,7 @@ function Dashboard({ navigation }: { navigation: any }) {
                 </View>
               </View>
               <View style={styles.balanceValueRow}>
-                <Text style={[styles.balanceValue, { color: colors.text, flexShrink: 1 }]} numberOfLines={1} adjustsFontSizeToFit>{isLoading ? '...' : (isBalanceVisible ? formatCurrency(totalBalance, true) : '••••••')}</Text>
+                <Text style={[styles.balanceValue, { color: colors.text, flexShrink: 1 }]} numberOfLines={1} adjustsFontSizeToFit>{isLoading ? '...' : (isBalanceVisible ? formatCurrency(totalBalance) : '••••••')}</Text>
                 <Pressable style={[styles.eyeButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', marginLeft: 8 }]} onPress={() => setIsBalanceVisible(prev => !prev)}>
                   <Text style={styles.eyeButtonIcon}>{isBalanceVisible ? '👁️' : '🙈'}</Text>
                 </Pressable>
@@ -537,7 +545,7 @@ function Dashboard({ navigation }: { navigation: any }) {
                   {wallets.map(wallet => (
                     <Pressable key={wallet.id} style={[styles.walletItem, selectedWallet?.id === wallet.id && styles.walletItemActive, { backgroundColor: selectedWallet?.id === wallet.id ? colors.primaryBg : colors.background, borderColor: selectedWallet?.id === wallet.id ? colors.primary : 'transparent' }]} onPress={() => handleSelectWallet(wallet)}>
                       <View style={[styles.walletIconBox, { backgroundColor: wallet.color + '20' }]}><Text style={styles.walletIcon}>{wallet.icon}</Text></View>
-                      <View style={styles.walletInfo}><Text style={[styles.walletNameText, { color: colors.text }]}>{wallet.name}</Text><Text style={[styles.walletCreatedText, { color: colors.textMuted }]}>Balance {formatCurrency(walletBalances[String(wallet.id)] || 0, true)}</Text></View>
+                      <View style={styles.walletInfo}><Text style={[styles.walletNameText, { color: colors.text }]}>{wallet.name}</Text><Text style={[styles.walletCreatedText, { color: colors.textMuted }]}>Balance {formatCurrency(walletBalances[String(wallet.id)] || 0)}</Text></View>
                       {selectedWallet?.id === wallet.id && <View style={[styles.checkCircle, { backgroundColor: colors.primary }]}><Text style={styles.checkIcon}>✓</Text></View>}
                     </Pressable>
                   ))}
@@ -825,8 +833,9 @@ const styles = StyleSheet.create({
   periodApplyText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   syncBanner: { paddingVertical: 6, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
   syncText: { fontSize: 13, fontWeight: '600' },
-  notificationBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, marginBottom: 12 },
+  notificationBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, marginBottom: 12, borderWidth: 1 },
   notificationText: { fontSize: 14, fontWeight: '600' },
+  connectionDot: { width: 8, height: 8, borderRadius: 999, marginRight: 8 },
   notificationBanner: { borderLeftWidth: 4, borderRadius: 12, padding: 14, marginBottom: 12, overflow: 'hidden' },
   notificationTitle: { fontSize: 14, fontWeight: '700', marginBottom: 4 },
   notificationMessage: { fontSize: 12, fontWeight: '500' },

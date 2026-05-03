@@ -4,8 +4,8 @@ A premium, dark-themed React Native application for tracking wealth, expenses, a
 
 # IMPORTANT:
 - MUST EDIT `config/appConfig.ts` to point to your local backend URL (e.g., `http://10.0.2.2:5001`) for Android Emulators.
-- The backend must be running (`node db/service.js`) for the app to function properly. 
-- The backend must be running (`node db/user.js`) for the app to function properly. 
+- The backend must be running (`node db/service.js`) for the app to function properly.
+- Do not start `db/tracker.js` or `db/user.js` for the main app; they do not include the full auth + socket backend.
 - Run `npm run android` to keep your app/device on 8081
 - Run `npm start` to start the Metro bundler on 8082 (websocket server )
 
@@ -48,6 +48,8 @@ cd Personal-Finance-Tracker
 ```bash
 npm install --legacy-peer-deps
 ```
+
+If you run into dependency issues, make sure to install the packages before starting the app or backend.
 
 ### 3. Setup Configuration
 The app requires a local configuration file. Copy the example to create your own:

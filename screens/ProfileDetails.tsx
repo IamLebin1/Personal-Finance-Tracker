@@ -5,6 +5,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   ScrollView,
   Alert,
   ActivityIndicator,
@@ -143,6 +144,13 @@ export default function ProfileDetails() {
     >
       <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.headerTop}>
+          <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Text style={styles.backIcon}>←</Text>
+          </Pressable>
+          <Text style={styles.headerTitle}>Personal Details</Text>
+          <View style={styles.headerSpacer} />
+        </View>
         <View style={styles.formCard}>
           <Text style={styles.label}>PROFILE PICTURE</Text>
           <View style={styles.profileImageRow}>
@@ -222,8 +230,34 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingTop: 10,
+  },  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Platform.OS === 'ios' ? 24 : 8,
+    paddingBottom: 18,
   },
-  formCard: {
+  backBtn: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+  },
+  backIcon: {
+    color: '#f4f6ff',
+    fontSize: 24,
+    fontWeight: '300',
+  },
+  headerTitle: {
+    color: '#f4f6ff',
+    fontSize: 18,
+    fontWeight: '800',
+    flex: 1,
+    textAlign: 'center',
+  },
+  headerSpacer: {
+    width: 40,
+    height: 40,
+  },  formCard: {
     backgroundColor: '#16193b',
     borderRadius: 24,
     padding: 20,
