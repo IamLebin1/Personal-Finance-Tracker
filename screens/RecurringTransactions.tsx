@@ -26,6 +26,7 @@ import {
   type RecurringTransactionInput,
 } from '../services/recurringTransactionApi';
 import { formatCurrency } from '../services/transactionService';
+import { useCurrency } from '../services/useCurrency';
 import type { Wallet } from '../types/transaction';
 
 const FREQUENCIES: Array<{ value: RecurringFrequency; label: string; subtitle: string }> = [
@@ -90,6 +91,7 @@ function scheduleToInput(schedule: RecurringTransaction): RecurringTransactionIn
 export default function RecurringTransactionsScreen() {
   const navigation = useNavigation();
   const { colors, isDark } = useTheme();
+  const { convertToUsd, convertFromUsd, symbol } = useCurrency();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -180,6 +182,7 @@ export default function RecurringTransactionsScreen() {
 
   const handleSubmit = async () => {
     const amountValue = Number(amount);
+    const amountInUsd = convertToUsd(amountValue);
     const countValue = Math.max(1, Number(intervalCount) || 1);
 
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
@@ -204,7 +207,7 @@ export default function RecurringTransactionsScreen() {
     }
 
     const input: RecurringTransactionInput = {
-      amount: amountValue,
+      amount: amountInUsd,
       type: transactionType,
       category: selectedCategory,
       note: note.trim(),
@@ -235,7 +238,7 @@ export default function RecurringTransactionsScreen() {
 
   const handleEdit = (schedule: RecurringTransaction) => {
     setEditingId(schedule.id);
-    setAmount(String(schedule.amount));
+    setAmount(String(convertFromUsd(schedule.amount)));
     setTransactionType(schedule.type);
     setSelectedCategory(schedule.category);
     setSelectedFrequency(schedule.frequency);
@@ -396,7 +399,7 @@ export default function RecurringTransactionsScreen() {
                   value={amount}
                   onChangeText={setAmount}
                   keyboardType="decimal-pad"
-                  placeholder="0.00"
+                  placeholder={`${symbol}0.00`}
                   placeholderTextColor={colors.textMuted + '60'}
                   style={[styles.amountInput, { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.background }]}
                 />
