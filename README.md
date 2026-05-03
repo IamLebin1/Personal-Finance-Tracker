@@ -1,8 +1,4 @@
 # 💸 Personal Finance Tracker
-
-<<<<<<< HEAD
-A premium, dark-themed React Native application for tracking wealth, expenses, and financial insights. This application features a robust **Local-First architecture** with SQLite persistence, real-time **WebSocket** notifications, and a dedicated Node.js backend.
-=======
 A premium, dark-themed React Native application for tracking wealth, expenses, and financial insights. Features smooth animations, data visualization, and a secure backend.
 
 # IMPORTANT:
